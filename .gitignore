@@ -8,6 +8,11 @@ __pycache__/
 # Outputs
 results/
 
+# Resources (except targets and pypgx genes)
+resources/
+!resources/targets.bed
+!resources/pypgx_genes.txt
+
 # Data
 data/*
 
