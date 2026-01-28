@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+
+# Snakemake
+.snakemake/
+
+# Outputs
+results/
+
+# Data
+data/*
+
+# Generated VCFs and indices
+*.vcf.gz
+*.vcf.gz.csi
+*.bcf
+*.bcf.csi
+
+# Logs
+*.log
+
+# nextflow work dir
+work/

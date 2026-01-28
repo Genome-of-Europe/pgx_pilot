@@ -1,0 +1,168 @@
+# ft: python
+import glob
+import pandas as pd
+import os
+import zipfile
+import io
+
+# Load config to get the BED file path
+configfile: "config.yaml"
+
+PYPGX_VERSION = "0.26.0"
+
+rule all:
+    input:
+        "results/pgx/merged_alleles.csv",
+        "results/pgx/merged_genotypes.csv",
+        "results/pgx/merged_phenotypes.csv"
+
+rule download_bundle:
+    output:
+        directory("resources/pypgx-bundle")
+    shell:
+        "git clone --branch {PYPGX_VERSION} --depth 1 https://github.com/sbslee/pypgx-bundle {output}"
+
+# Read genes from the BED file specified in the config
+bed_file_path = config["regions_bed"]
+with open(bed_file_path) as f:
+    GENES = sorted(list(set([line.strip().split("\t")[3] for line in f if line.strip()])))
+
+# Read PyPGX supported genes
+with open("resources/pypgx_genes.txt") as f:
+    PYPGX_GENES = sorted(list(set([line.strip() for line in f])))
+
+# Remove unsupported genes
+GENES = list(set(GENES).intersection(set(PYPGX_GENES)))
+
+rule run_pypgx:
+    input:
+        vcf=config["input_vcf"],
+        # The tbi is not explicitly used, but it's required to exist
+        tbi=config["input_vcf"] + ".tbi",
+        bundle=rules.download_bundle.output
+    output:
+        "results/pgx/{gene}/results.zip"
+    threads: 1
+    shell:
+        """
+        export PYPGX_BUNDLE={input.bundle}
+        pypgx run-ngs-pipeline \
+            --assembly GRCh38 \
+            --variants {input.vcf} \
+            --force \
+            {wildcards.gene} \
+            $(dirname {output})
+        """
+
+rule calculate_af:
+    input:
+        "results/pgx/{gene}/results.zip"
+    output:
+        alleles="results/pgx/af/{gene}_alleles.csv",
+        genotypes="results/pgx/af/{gene}_genotypes.csv",
+        phenotypes="results/pgx/af/{gene}_phenotypes.csv"
+    run:
+        import pypgx
+        import zipfile
+        import io
+        import pandas as pd
+        import csv
+
+        with zipfile.ZipFile(input[0], 'r') as zip_ref:
+            # Find the data.tsv file
+            tsv_path = None
+            for f in zip_ref.namelist():
+                if f.endswith('data.tsv'):
+                    tsv_path = f
+                    break
+
+            if tsv_path:
+                with zip_ref.open(tsv_path) as tsv_file:
+                    s = tsv_file.read().decode('utf-8')
+                    df = pd.read_csv(io.StringIO(s), sep="\t")
+
+                    total_samples = len(df)
+                    AN = total_samples * 2
+
+                    # --- 1. Genotypes ---
+                    genotype_counts = df.groupby(["Genotype", "Phenotype"]).size().reset_index(name='Count')
+                    
+                    with open(output.genotypes, 'w', newline='') as f_out:
+                        writer = csv.writer(f_out)
+                        writer.writerow(["Gene", "Genotype", "Phenotype", "Count", "Frequency"])
+                        for _, row in genotype_counts.iterrows():
+                            freq = row['Count'] / total_samples
+                            writer.writerow([wildcards.gene, row['Genotype'], row['Phenotype'], row['Count'], freq])
+
+                    # --- 2. Phenotypes ---
+                    phenotype_counts = df["Phenotype"].value_counts().reset_index()
+                    phenotype_counts.columns = ["Phenotype", "Count"]
+
+                    with open(output.phenotypes, 'w', newline='') as f_out:
+                        writer = csv.writer(f_out)
+                        writer.writerow(["Gene", "Phenotype", "Count", "Frequency"])
+                        for _, row in phenotype_counts.iterrows():
+                            freq = row['Count'] / total_samples
+                            writer.writerow([wildcards.gene, row['Phenotype'], row['Count'], freq])
+
+                    # --- 3. Alleles ---
+                    # Flatten alleles from genotypes
+                    all_alleles = []
+                    for genotype in df["Genotype"]:
+                        if '/' in genotype:
+                            parts = genotype.split('/')
+                        elif '|' in genotype:
+                            parts = genotype.split('|')
+                        else:
+                            parts = [genotype] # Should not happen usually
+                        all_alleles.extend(parts)
+                    
+                    allele_counts = pd.Series(all_alleles).value_counts().reset_index()
+                    allele_counts.columns = ["Allele", "AC"]
+
+                    with open(output.alleles, 'w', newline='') as f_out:
+                        writer = csv.writer(f_out)
+                        writer.writerow(["Gene", "Allele", "Function", "AC", "AN", "AF"])
+                        for _, row in allele_counts.iterrows():
+                            allele = row['Allele']
+                            ac = row['AC']
+                            af = ac / AN
+                            
+                            # Get function using PyPGX
+                            try:
+                                function = pypgx.get_function(wildcards.gene, allele)
+                            except Exception:
+                                function = "Unknown"
+                            
+                            writer.writerow([wildcards.gene, allele, function, ac, AN, af])
+
+rule merge_alleles:
+    input:
+        expand("results/pgx/af/{gene}_alleles.csv", gene=GENES)
+    output:
+        "results/pgx/merged_alleles.csv"
+    run:
+        dfs = [pd.read_csv(f) for f in input]
+        pd.concat(dfs).to_csv(output[0], index=False)
+
+rule merge_genotypes:
+    input:
+        expand("results/pgx/af/{gene}_genotypes.csv", gene=GENES)
+    output:
+        "results/pgx/merged_genotypes.csv"
+    run:
+        dfs = [pd.read_csv(f) for f in input]
+        pd.concat(dfs).to_csv(output[0], index=False)
+
+rule merge_phenotypes:
+    input:
+        expand("results/pgx/af/{gene}_phenotypes.csv", gene=GENES)
+    output:
+        "results/pgx/merged_phenotypes.csv"
+    run:
+        dfs = [pd.read_csv(f) for f in input]
+        pd.concat(dfs).to_csv(output[0], index=False)
+
+
+
+

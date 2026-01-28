@@ -1,0 +1,139 @@
+#ftype:python
+
+configfile: "config.yaml"
+
+import os, sys, json, csv
+
+# --- Config Validation ---
+if not config.get("input_vcf") or not os.path.exists(config["input_vcf"]):
+    sys.exit(f"ERROR: input_vcf file not found at: '{config.get('input_vcf')}'.")
+
+if config.get("regions_bed") and config.get("targets_vcf"):
+    sys.exit("ERROR: Ambiguous configuration. Specify only one of 'regions_bed' or 'targets_vcf'.")
+
+# --- Helper Functions ---
+def get_selection_inputs(wildcards):
+    files = {"vcf": config["input_vcf"]}
+    bed = config.get("regions_bed")
+    if bed: 
+        files["bed"] = "resources/selection_targets.bed" if bed.startswith(("http", "ftp")) else bed
+    return files
+
+# --- Main Rules ---
+rule all:
+    input: 
+        "results/final_annotated.sites.vcf.gz",
+        "results/final_annotated.sites.vcf.gz.tbi"
+
+rule finalize_output:
+    input: "results/external.sites.vcf.gz"
+    output: 
+        vcf="results/final_annotated.sites.vcf.gz",
+        tbi="results/final_annotated.sites.vcf.gz.tbi"
+    shell: "cp {input} {output.vcf} && tabix -p vcf {output.vcf}"
+
+# --- Resources & Common Steps ---
+
+# --- Internal Pipeline Rules (Subset needed for pre-processing) ---
+rule download_selection_bed:
+    output: "resources/selection_targets.bed"
+    params: url=config.get("regions_bed")
+    shell: "wget --tries=3 -O {output} {params.url}"
+
+
+
+rule select_regions:
+    input: unpack(get_selection_inputs)
+    output: 
+        vcf="results/temp/02_selected.vcf.gz",
+        tbi="results/temp/02_selected.vcf.gz.tbi"
+    params: 
+        bed=config.get("regions_bed", ""), 
+        bed_path=lambda w: "resources/selection_targets.bed" if config.get("regions_bed", "").startswith(("http", "ftp")) else config.get("regions_bed", "")
+    shell:
+        """
+        bcftools view -R {params.bed_path} -O z -o {output.vcf} {input.vcf}
+        tabix -p vcf {output.vcf}
+        """
+
+# --- External Pipeline Rules ---
+rule install_nextflow:
+    output: "resources/bin/nextflow"
+    shell: "mkdir -p resources/bin && curl -s https://get.nextflow.io | bash && mv nextflow {output} && chmod +x {output}"
+
+rule clone_pipeline_repo:
+    output: directory("resources/external_pipeline")
+    params: url=config["external_pipeline"]["repo_url"], ver=config["external_pipeline"]["version"]
+    shell: "rm -rf {output} && git clone {params.url} {output} && cd {output} && (git checkout {params.ver} || true)"
+
+rule prepare_nextflow_metadata:
+    input: config["sample_info"]
+    output: "results/temp/nextflow_metadata.csv"
+    params: country=config.get("country_code", "Unknown")
+    run:
+        sex_map = {'M':'1','F':'2','m':'1','f':'2','1':'1','2':'2'}
+        with open(input[0]) as f_in, open(output[0],'w') as f_out:
+            # Sample data file: no header, col 0 = ID, col 1 = Sex
+            reader, writer = csv.reader(f_in, delimiter='\t'), csv.writer(f_out)
+            writer.writerow(['SAMPLE','SEX','ANCESTRY'])
+            for r in reader:
+                sid, sex = r[0], r[1]
+                writer.writerow([sid, sex_map.get(str(sex).strip(),'0'), params.country])
+
+rule prepare_nextflow_input_dir:
+    input: vcf="results/temp/02_selected.vcf.gz", tbi="results/temp/02_selected.vcf.gz.tbi"
+    output: directory("results/temp/nextflow_input")
+    shell: "mkdir -p {output} && ln -sf $(readlink -f {input.vcf}) {output}/input.vcf.gz && ln -sf $(readlink -f {input.tbi}) {output}/input.vcf.gz.tbi"
+
+rule generate_nextflow_params:
+    input: vcf="results/temp/nextflow_input", meta="results/temp/nextflow_metadata.csv", repo="resources/external_pipeline"
+    output: "results/temp/nextflow_params.json"
+    run:
+        # Start with the default parameters, as they were before
+        params = {
+            "seq_type": "WGS", 
+            "qc": {
+                "genotype": {"gq_threshold": 20, "dp_threshold": 10, "ab_ratio_threshold": 0.2},
+                "variant": {"qual_threshold": 30, "qd_threshold": 2.0, "dp_threshold": 10, "mq_threshold": 40, "fs_threshold": 60, "read_pos_rank_sum_threshold": -8.0},
+                "sample": {
+                    "wes": {"coverage_threshold": 10, "het_hom_threshold": 10, "call_rate_threshold": 0.95, "singletons_threshold": 5000, "contamination_threshold": 0.00015},
+                    "wgs": {"coverage_threshold": 15, "het_hom_threshold": 3.3, "call_rate_threshold": 0.95, "singletons_threshold": 100000, "contamination_threshold": 0.05}
+                }
+            }
+        }
+
+        # Load override parameters from the snakemake config
+        override_params = config.get("nextflow_params", {})
+
+        # Deep merge the override_params into the default params
+        def deep_merge(source, destination):
+            for key, value in source.items():
+                if isinstance(value, dict) and key in destination and isinstance(destination[key], dict):
+                    deep_merge(value, destination[key])
+                else:
+                    destination[key] = value
+            return destination
+
+        params = deep_merge(override_params, params)
+
+        # Add essential path parameters, which should not be overridden
+        params.update({
+            "input": os.path.abspath(input.vcf), 
+            "output": os.path.abspath("results/temp/nextflow_output"),
+            "output_stats": os.path.abspath("results/temp/nextflow_output"),
+            "metadata_csv": os.path.abspath(input.meta), 
+            "sceVCF_path": os.path.abspath(os.path.join(input.repo, "sceVCF"))
+        })
+
+        with open(output[0], 'w') as f: json.dump(params, f, indent=4)
+
+rule run_external_pipeline:
+    input: nf="resources/bin/nextflow", repo="resources/external_pipeline", params="results/temp/nextflow_params.json", vcf="results/temp/nextflow_input"
+    output: "results/external.sites.vcf.gz"
+    params: args=config["external_pipeline"].get("nextflow_args", "")
+    shell:
+        """
+        rm -rf results/temp/nextflow_output
+        {input.nf} run {input.repo}/main.nf -params-file {input.params} {params.args}
+        mv results/temp/nextflow_output/*-AF_recalc.vcf.gz {output} && tabix -p vcf {output}
+        """

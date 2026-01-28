@@ -1,0 +1,46 @@
+# This is the configuration for DOCKER execution.
+# It uses absolute paths that are mapped via Docker volumes.
+
+# --- Input Data ---
+input_vcf: "/data/raw_cohort.vcf.gz"
+genome_build: "GRCh38" # Options: GRCh37, hg19, CHM13, GRCh38
+sample_info: "/data/samples.tsv" # Format: sample_id, sex (M/F)
+
+# --- Reference Data Management ---
+resources:
+  ref_fasta_url: "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
+  chain_urls:
+    GRCh37: "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz"
+    hg19: "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz"
+    CHM13: "https://hgdownload.soe.ucsc.edu/goldenPath/hs1/liftOver/hs1ToHg38.over.chain.gz"
+
+local_resources:
+  ref_fasta: "" # e.g. "/data/refs/GRCh38.fa"
+  chain_file: "" # e.g. "/data/refs/hg19ToHg38.over.chain.gz"
+
+# --- Target Selection ---
+regions_bed: "/resources/targets.bed" 
+
+# --- Pipeline Settings ---
+country_code: "PT" # ISO code appended to INFO tags (e.g., AF_M_PT)
+run_qc: false # Set to true to enable QC filtering step
+
+# --- Quality Control ---
+external_qc_script: "" 
+qc_thresholds:
+  hwe: 1e-6
+  maf: 0.01
+  mind: 0.1
+  min_dp: 10
+  min_gq: 20
+  ab_ratio: 0.2
+  max_missing: 0.1
+
+# --- External Pipeline (Nextflow) Settings ---
+external_pipeline:
+  repo_url: "https://github.com/EGA-archive/AF_bcftools_pipeline"
+  version: "main" # Git branch, tag, or commit hash
+  nextflow_args: ""
+
+# Optional: Override Nextflow default parameters here
+nextflow_params: {}
