@@ -126,6 +126,6 @@ rule create_sites_vcfs:
         tabix -p vcf {output.all_sites}
         
         # Filter for PASS status.
-        bcftools view -G -i 'INFO/QC_STATUS="PASS"' -O z -o {output.pass_sites} {input}
+        bcftools view -G -i 'INFO/QC_STATUS="PASS"' {input} | bcftools view -e 'ALT="*"' -O z -o {output.pass_sites}
         tabix -p vcf {output.pass_sites}
         """
