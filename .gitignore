@@ -27,3 +27,6 @@ data/*
 
 # nextflow work dir
 work/
+
+# nextflow logs and cache
+.nextflow* 

@@ -52,7 +52,7 @@ rule select_regions:
         bed_path=lambda w: "resources/selection_targets.bed" if config.get("regions_bed", "").startswith(("http", "ftp")) else config.get("regions_bed", "")
     shell:
         """
-        bcftools view -R {params.bed_path} -O z -o {output.vcf} {input.vcf}
+        bcftools view -R {params.bed_path} {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output}
         tabix -p vcf {output.vcf}
         """
 
