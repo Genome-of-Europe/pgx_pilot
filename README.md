@@ -25,6 +25,15 @@ docker pull goe/gdi-pipeline:latest
 ```
 
 ### Build Instructions
+#### Using conda
+1. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install).
+2. Create and activate conda env
+```bash
+conda create -n pgx_pilot -f env.yml
+conda activate pgx_pilot
+```
+
+#### Using docker
 ```bash
 git clone https://github.com/your-repo/gdi_pilot.git
 cd gdi_pilot
