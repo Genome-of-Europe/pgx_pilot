@@ -17,7 +17,6 @@ The goal is to allow partners to run the exact same workflow on their local data
 ## 2. Quick Start
 The pipeline can be run as Docker container, or directly from the code in the GitHub repository.
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) or [Apptainer/Singularity](https://apptainer.org/).
 
 ### Pull the Image (NOT Working yet - use the Dockerfile or run snakemake locally)
 ```bash
@@ -29,15 +28,15 @@ docker pull goe/gdi-pipeline:latest
 1. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install).
 2. Create and activate conda env
 ```bash
-conda env create -n pgx_pilot -f env.yml
+conda env create -n pgx_pilot -f env.yml 
 conda activate pgx_pilot
 ```
 
 #### Using docker
 ```bash
-git clone https://github.com/your-repo/gdi_pilot.git
+git clone https://github.com/Genome-of-Europe/pgx_pilot.git
 cd gdi_pilot
-docker build -t goe/gdi-pipeline:latest .
+docker build -t goe/pgx-pipeline:latest .
 ```
 
 ## 3. Setup Your Local Environment
@@ -93,9 +92,23 @@ The primary pipeline for generating standardized frequency data and high-quality
 6.  **Sites Output:** Generates sites-only VCFs (All & PASS only).
 
 **Run Command:**
+using conda
 ```bash
 snakemake -s Snakefile -j 8
 ```
+using docker
+```bash
+docker run --rm -it \
+  -v $(pwd):/pipeline \
+  -v $(pwd)/config_docker.yaml:/pipeline/config.yaml \
+  -v $(pwd)/data:/data \
+  -v $(pwd)/resources:/resources \
+  -v $(pwd)/results:/results \
+  goe/pgx-pipeline:latest \
+  snakemake -s Snakefile -j 8
+
+```
+
 
 ### B. Beacon Pipeline (`Snakefile.AF_bcftools_pipeline`)
 A wrapper around the EGA/Beacon Nextflow pipeline.
@@ -122,11 +135,19 @@ snakemake -s Snakefile.pypgx -j 8
 Results are written to your local `results/` folder. The exact outputs depend on which pipeline was run.
 
 ### Main Output Files
-| File | Pipeline | Description |
-|------|----------|-------------|
-| `final_annotated.sites.vcf.gz` | **GoE & Beacon** | **Submission File.** A sites-only VCF containing the calculated allele frequencies (**AF**). This is the primary output for data sharing. |
-| `final_annotated.vcf.gz` | **GoE only** | The full VCF with all genotypes and the calculated allele frequencies (**AF**). This file should be kept private. |
-| `results/pypgx/` | **PyPGX only** | Directory containing PGx star-allele calls and phenotype predictions. |
+*   **GoE Pipeline Outputs**
+    *   `results/{country_code}.sites.pass.vcf.gz`: **Submission File.** A sites-only VCF containing calculated allele frequencies (AF) for variants that passed all quality filters.
+    *   `results/{country_code}.sites.all.vcf.gz`: A sites-only VCF containing allele frequencies for all variants, including those that failed QC.
+    *   `results/intermediate/{country_code}.full_sample_data.vcf.gz`: The full VCF with all sample genotypes and calculated allele frequencies. **This file should be kept private.**
+
+*   **PyPGX Pipeline Outputs**
+    *   `results/pgx/merged_alleles.csv`: Aggregated pharmacogenomic star-allele calls across all analyzed genes.
+    *   `results/pgx/merged_phenotypes.csv`: Aggregated phenotype predictions (e.g., "Normal Metabolizer") for all analyzed genes.
+    *   `results/pgx/merged_genotypes.csv`: Detailed per-sample genotype and phenotype report.
+    *   `results/pgx/{gene}/`: Individual directories for each gene containing detailed PyPGX results and allele fraction profiles (PNGs).
+
+*   **Beacon Pipeline Outputs**
+    *   `results/final_annotated.sites.vcf.gz`: The primary sites-only VCF produced by the Beacon pipeline.
 
 ### Calculated Statistics (GoE Pipeline)
 The following statistics are added to the VCF INFO field:
@@ -141,6 +162,6 @@ The following statistics are added to the VCF INFO field:
 
 **Stratification:**
 Statistics are stratified by Country (e.g., `_PT`) and Sex (`_M`, `_F`).
-*   *Example:* `AF_PT_M` (Allele Frequency for Males in the Portuguse cohort).
+*   *Example:* `AF_PT_M` (Allele Frequency for Males in the Portuguese cohort).
 
 

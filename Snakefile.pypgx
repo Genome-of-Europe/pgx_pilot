@@ -37,8 +37,6 @@ GENES = list(set(GENES).intersection(set(PYPGX_GENES)))
 rule run_pypgx:
     input:
         vcf=config["input_vcf"],
-        # The tbi is not explicitly used, but it's required to exist
-        tbi=config["input_vcf"] + ".tbi",
         bundle=rules.download_bundle.output
     output:
         "results/pgx/{gene}/results.zip"

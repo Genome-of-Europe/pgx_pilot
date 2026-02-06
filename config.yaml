@@ -2,7 +2,7 @@
 # It uses relative paths.
 
 # --- Input Data ---
-input_vcf: "data/raw_cohort.vcf.gz"
+input_vcf: "data/raw_cohort.bcf"
 genome_build: "GRCh38" # Options: GRCh37, hg19, CHM13, GRCh38
 sample_info: "data/samples.tsv" # Format: sample_id, sex (M/F)
 

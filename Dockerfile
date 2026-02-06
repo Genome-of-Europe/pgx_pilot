@@ -20,6 +20,7 @@ RUN conda config --add channels defaults && \
 # Install Bioinformatics Tools & Snakemake
 # We include snakemake inside so the container is self-orchestrating if needed
 RUN conda install -y \
+    python=3.12 \
     snakemake \
     bcftools \
     pysam \
