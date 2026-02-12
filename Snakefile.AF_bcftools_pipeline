@@ -89,12 +89,29 @@ rule generate_nextflow_params:
     input: vcf="results/temp/nextflow_input", meta="results/temp/nextflow_metadata.csv", repo="resources/external_pipeline"
     output: "results/temp/nextflow_params.json"
     run:
-        # Start with the default parameters, as they were before
+        # Get thresholds from config
+        qct = config.get("qc_thresholds", {})
+        
+        # Map config thresholds to Nextflow parameter structure
         params = {
             "seq_type": "WGS", 
             "qc": {
-                "genotype": {"gq_threshold": 20, "dp_threshold": 10, "ab_ratio_threshold": 0.2},
-                "variant": {"qual_threshold": 30, "qd_threshold": 2.0, "dp_threshold": 10, "mq_threshold": 40, "fs_threshold": 60, "read_pos_rank_sum_threshold": -8.0},
+                "genotype": {
+                    "gq_threshold": qct.get("min_gq", 20),
+                    "dp_threshold": qct.get("min_dp", 10),
+                    "ab_ratio_threshold": qct.get("ab_ratio", 0.2)
+                },
+                "variant": {
+                    "qual_threshold": qct.get("qual", 30),
+                    "qd_threshold": qct.get("qd", 2.0),
+                    "dp_threshold": qct.get("min_dp", 10),
+                    "mq_threshold": qct.get("mq", 40),
+                    "fs_threshold": qct.get("fs", 60),
+                    "read_pos_rank_sum_threshold": qct.get("readpos", -8.0),
+                    "hwe_threshold": qct.get("hwe", 1e-6),
+                    "maf_threshold": qct.get("maf", 0.01),
+                    "max_missing_threshold": qct.get("max_missing", 0.1)
+                },
                 "sample": {
                     "wes": {"coverage_threshold": 10, "het_hom_threshold": 10, "call_rate_threshold": 0.95, "singletons_threshold": 5000, "contamination_threshold": 0.00015},
                     "wgs": {"coverage_threshold": 15, "het_hom_threshold": 3.3, "call_rate_threshold": 0.95, "singletons_threshold": 100000, "contamination_threshold": 0.05}

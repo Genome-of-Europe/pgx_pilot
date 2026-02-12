@@ -26,14 +26,14 @@ def get_stats_inputs(wildcards):
 # --- Main Rules ---
 rule all:
     input: 
-        expand("results/{country}.sites.all.vcf.gz", country=config.get("country_code", "PT")),
-        expand("results/{country}.sites.pass.vcf.gz", country=config.get("country_code", "PT")),
-        expand("results/intermediate/{country}.full_sample_data.vcf.gz", country=config.get("country_code", "PT"))
+        expand("results/{prefix}.sites.all.vcf.gz", prefix=config.get("output_prefix", "cohort")),
+        expand("results/{prefix}.sites.pass.vcf.gz", prefix=config.get("output_prefix", "cohort")),
+        expand("results/intermediate/{prefix}.full_sample_data.vcf.gz", prefix=config.get("output_prefix", "cohort"))
 
 rule finalize_output:
     input: 
-        all_sites="results/{country}.sites.all.vcf.gz",
-        pass_sites="results/{country}.sites.pass.vcf.gz"
+        all_sites="results/{prefix}.sites.all.vcf.gz",
+        pass_sites="results/{prefix}.sites.pass.vcf.gz"
     output:
         "results/final_annotated.sites.vcf.gz" # Optional legacy output
     shell: "cp {input.pass_sites} {output} && tabix -p vcf {output}"
@@ -79,12 +79,25 @@ rule download_selection_bed:
 
 # --- QC Workflow ---
 
-rule annotate_vcf:
-    input: vcf="results/temp/02_normalized.vcf.gz", samples=config["sample_info"]
-    output: vcf="results/temp/03_raw_stats.vcf.gz"
-    params: country=config.get("country_code", "PT")
+rule generate_metadata_raw:
+    input: samples=config["sample_info"]
+    output: 
+        groups="results/temp/groups_raw.txt"
+    params: suffix="raw"
     shell:
-        "python scripts/annotate_vcf.py {input.vcf} {output.vcf} {input.samples} {params.country} --raw && tabix -p vcf {output.vcf}"
+        "python scripts/generate_groups.py {input.samples} {output.groups} --suffix {params.suffix}"
+
+rule annotate_vcf:
+    input: 
+        vcf="results/temp/02_normalized.vcf.gz", 
+        groups="results/temp/groups_raw.txt"
+    output: vcf="results/temp/03_raw_stats.vcf.gz"
+    shell:
+        """
+        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS | \
+        bcftools view -O z -o {output.vcf}
+        tabix -p vcf {output.vcf}
+        """
 
 rule genotype_masking:
     input: "results/temp/03_raw_stats.vcf.gz"
@@ -99,26 +112,63 @@ rule genotype_masking:
         tabix -p vcf {output}
         """
 
-rule calc_final_stats:
-    input: vcf="results/temp/04_masked.vcf.gz", samples=config["sample_info"]
-    output: vcf="results/temp/05_final_stats.vcf.gz"
-    params: country=config.get("country_code", "PT")
+rule generate_metadata_final:
+    input: samples=config["sample_info"]
+    output: 
+        groups="results/temp/groups_final.txt"
+    params: suffix=""
     shell:
-        "python scripts/annotate_vcf.py {input.vcf} {output.vcf} {input.samples} {params.country} && tabix -p vcf {output.vcf}"
+        "python scripts/generate_groups.py {input.samples} {output.groups}"
+
+rule calc_final_stats:
+    input: 
+        vcf="results/temp/04_masked.vcf.gz", 
+        groups="results/temp/groups_final.txt"
+    output: vcf="results/temp/05_final_stats.vcf.gz"
+    shell:
+        """
+        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS | \
+        bcftools view -O z -o {output.vcf}
+        tabix -p vcf {output.vcf}
+        """
 
 rule variant_qc_tagging:
     input: "results/temp/05_final_stats.vcf.gz"
-    output: "results/intermediate/{country}.full_sample_data.vcf.gz"
+    output: "results/intermediate/{prefix}.full_sample_data.vcf.gz"
     params:
-        args="" 
+        qual=config["qc_thresholds"]["qual"],
+        qd=config["qc_thresholds"]["qd"],
+        mq=config["qc_thresholds"]["mq"],
+        fs=config["qc_thresholds"]["fs"],
+        readpos=config["qc_thresholds"]["readpos"],
+        hwe=config["qc_thresholds"]["hwe"],
+        maf=config["qc_thresholds"]["maf"],
+        max_missing=config["qc_thresholds"]["max_missing"],
+        min_dp=config["qc_thresholds"]["min_dp"],
+        min_gq=config["qc_thresholds"]["min_gq"],
+        ab_ratio=config["qc_thresholds"]["ab_ratio"]
     shell:
-        "python scripts/tag_variant_qc.py {input} {output} {params.args} && tabix -p vcf {output}"
+        """
+        python scripts/tag_variant_qc.py {input} {output} \
+            --qual {params.qual} \
+            --qd {params.qd} \
+            --mq {params.mq} \
+            --fs {params.fs} \
+            --readpos {params.readpos} \
+            --hwe {params.hwe} \
+            --maf {params.maf} \
+            --max_missing {params.max_missing} \
+            --min_dp {params.min_dp} \
+            --min_gq {params.min_gq} \
+            --ab_ratio {params.ab_ratio}
+        tabix -p vcf {output}
+        """
 
 rule create_sites_vcfs:
-    input: "results/intermediate/{country}.full_sample_data.vcf.gz"
+    input: "results/intermediate/{prefix}.full_sample_data.vcf.gz"
     output:
-        all_sites="results/{country}.sites.all.vcf.gz",
-        pass_sites="results/{country}.sites.pass.vcf.gz"
+        all_sites="results/{prefix}.sites.all.vcf.gz",
+        pass_sites="results/{prefix}.sites.pass.vcf.gz"
     shell:
         """
         bcftools view -G -O z -o {output.all_sites} {input}
