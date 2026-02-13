@@ -2,21 +2,14 @@
 # It uses relative paths.
 
 # --- Input Data ---
-input_vcf: "data/raw_cohort.bcf"
-genome_build: "GRCh38" # Options: GRCh37, hg19, CHM13, GRCh38
-sample_info: "data/samples.tsv" # Format: sample_id, sex (M/F), country_code
+input_vcf: "data/raw_cohort.vcf.gz"
+genome_build: "GRCh38" # only GRCh38 for now
+country_code: "Unknown" # ISO 3166-1 alpha-2 code, used by Beacon pipeline
+sample_info: "data/samples.tsv" # Format: sample_id, sex (M/F), country_code (ISO 3166)
 
 # --- Reference Data Management ---
 resources:
   ref_fasta_url: "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
-  chain_urls:
-    GRCh37: "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz"
-    hg19: "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz"
-    CHM13: "https://hgdownload.soe.ucsc.edu/goldenPath/hs1/liftOver/hs1ToHg38.over.chain.gz"
-
-local_resources:
-  ref_fasta: "" # e.g. "data/refs/GRCh38.fa"
-  chain_file: "" # e.g. "data/refs/hg19ToHg38.over.chain.gz"
 
 # --- Target Selection ---
 regions_bed: "resources/targets.bed"

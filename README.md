@@ -1,16 +1,16 @@
-# GDI Variant Harmonization Pipeline
-
-**Project:** WP6 GoE  
-**Author:** Hugo Martiniano
+# GoE PGx/GDI MAP Stage 1 pipelines
 
 ## 1. Overview
-This pipeline aims to standardize genomic variant processing across multiple sites. It automates:
+This repository contains snakemake workflow files for the analysis of GoE legacy data as part of the GoE PGx pilot and the GDI MAP Stage 1.
 
-1. Filtering variants based on specified genomic regions.
+These perform the following: 
+
+1. Filtering variants based on specified genomic regions (selected pharmacogenes).
 2. Splitting multiallelic sites and left-aligning indels.
 3. Genotype masking and variant filtering.
 4. Calculating Allele Frequencies (AF) stratified by Country and Sex.
-5. Generating a sites-only VCF output.
+5. Generating a sites-only VCF, compatible with the format expected for GDI MAP Stage 1.
+6. Additionally, generating star allele and phenotype (drug response) frequencies, stratified in the same groups as the above.
 
 The goal is to allow partners to run the exact same workflow on their local data and produce standardized, comparable outputs.
 
@@ -22,7 +22,7 @@ The pipeline can be run as Docker container, or directly from the code in the Gi
 1. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install).
 2. Create and activate conda env
 ```bash
-conda env create -n pgx_pilot -f env.yml 
+conda env create -f env.yml 
 conda activate pgx_pilot
 ```
 
@@ -40,9 +40,10 @@ Repository structure:
 /analysis_directory/
 ├── config.yaml          # Pipeline configuration
 ├── data/
-│   ├── cohort.vcf.gz    # Your input VCF (path set in config.yaml)
+│   ├── raw_cohort.vcf.gz # Your input VCF (path set in config.yaml)
 │   └── samples.tsv      # Metadata (SampleID, Sex, CountryCode)
 ├── resources/           # Folder for resources (BED targets, gene lists)
+│   └── pypgx_genes.txt  # Required for PyPGX workflow
 └── results/             # Output directory
 ```
 
@@ -110,7 +111,7 @@ Results are written to the `results/` folder.
 *   **PyPGX Pipeline Outputs**
     *   `results/pgx/merged_alleles.csv`: Aggregated star-allele calls across genes, stratified by Group.
     *   `results/pgx/merged_phenotypes.csv`: Aggregated phenotype predictions, stratified by Group.
-    *   `results/pgx/merged_genotypes.csv`: Detailed per-sample report.
+    *   `results/pgx/merged_genotypes.csv`: Aggregated genotype calls and frequencies, stratified by Group.
 
 ### Calculated Statistics
 Statistics (AC, AN, AF, etc.) are stratified by Country and Sex based on the input metadata.

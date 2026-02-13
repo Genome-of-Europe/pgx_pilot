@@ -6,7 +6,7 @@ __pycache__/
 .snakemake/
 
 # Outputs
-results/
+results*
 
 # Resources (except targets and pypgx genes)
 resources/

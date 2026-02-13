@@ -35,7 +35,7 @@ rule download_bundle:
     shell:
         "git clone --branch {PYPGX_VERSION} --depth 1 https://github.com/sbslee/pypgx-bundle {output}"
 
-rule generate_metadata:
+rule generate_groups:
     input: samples=config["sample_info"]
     output: "results/temp/pgx_groups.txt"
     shell:
@@ -67,86 +67,16 @@ rule calculate_stratified_af:
         alleles="results/pgx/af/{gene}_alleles.csv",
         genotypes="results/pgx/af/{gene}_genotypes.csv",
         phenotypes="results/pgx/af/{gene}_phenotypes.csv"
-    run:
-        import pypgx
-        
-        # 1. Load sample to group mapping
-        sample_groups = {}
-        all_groups = set(["ALL"])
-        with open(input.groups, 'r') as f:
-            for line in f:
-                sid, groups_str = line.strip().split('\t')
-                groups = groups_str.split(',')
-                sample_groups[sid] = groups + ["ALL"]
-                for g in groups:
-                    all_groups.add(g)
-        
-        all_groups = sorted(list(all_groups))
-
-        with zipfile.ZipFile(input.zip, 'r') as zip_ref:
-            tsv_path = next((f for f in zip_ref.namelist() if f.endswith('data.tsv')), None)
-            if not tsv_path:
-                return
-
-            with zip_ref.open(tsv_path) as tsv_file:
-                df = pd.read_csv(io.StringIO(tsv_file.read().decode('utf-8')), sep="\t")
-            
-            # Prepare files
-            f_alleles = open(output.alleles, 'w', newline='')
-            f_genotypes = open(output.genotypes, 'w', newline='')
-            f_phenotypes = open(output.phenotypes, 'w', newline='')
-            
-            w_alleles = csv.writer(f_alleles)
-            w_genotypes = csv.writer(f_genotypes)
-            w_phenotypes = csv.writer(f_phenotypes)
-            
-            w_alleles.writerow(["Gene", "Group", "Allele", "Function", "AC", "AN", "AF"])
-            w_genotypes.writerow(["Gene", "Group", "Genotype", "Phenotype", "Count", "Frequency"])
-            w_phenotypes.writerow(["Gene", "Group", "Phenotype", "Count", "Frequency"])
-
-            for group in all_groups:
-                # Subset samples for this group
-                if group == "ALL":
-                    subset_df = df
-                else:
-                    group_samples = [sid for sid, groups in sample_groups.items() if group in groups]
-                    subset_df = df[df['Sample'].isin(group_samples)]
-                
-                if subset_df.empty:
-                    continue
-                
-                total_samples = len(subset_df)
-                an = total_samples * 2
-
-                # --- Phenotypes ---
-                pheno_counts = subset_df["Phenotype"].value_counts().reset_index()
-                for _, row in pheno_counts.iterrows():
-                    w_phenotypes.writerow([wildcards.gene, group, row['Phenotype'], row['count'], row['count']/total_samples])
-
-                # --- Genotypes ---
-                gt_counts = subset_df.groupby(["Genotype", "Phenotype"]).size().reset_index(name='count')
-                for _, row in gt_counts.iterrows():
-                    w_genotypes.writerow([wildcards.gene, group, row['Genotype'], row['Phenotype'], row['count'], row['count']/total_samples])
-
-                # --- Alleles ---
-                all_alleles = []
-                for genotype in subset_df["Genotype"]:
-                    all_alleles.extend(genotype.replace('|', '/').split('/'))
-                
-                al_counts = pd.Series(all_alleles).value_counts().reset_index()
-                al_counts.columns = ["Allele", "AC"]
-                for _, row in al_counts.iterrows():
-                    allele = row['Allele']
-                    ac = row['AC']
-                    try:
-                        function = pypgx.get_function(wildcards.gene, allele)
-                    except:
-                        function = "Unknown"
-                    w_alleles.writerow([wildcards.gene, group, allele, function, ac, an, ac/an])
-
-            f_alleles.close()
-            f_genotypes.close()
-            f_phenotypes.close()
+    shell:
+        """
+        python scripts/calculate_pgx_stats.py \
+            --zip {input.zip} \
+            --groups {input.groups} \
+            --gene {wildcards.gene} \
+            --out-alleles {output.alleles} \
+            --out-genotypes {output.genotypes} \
+            --out-phenotypes {output.phenotypes}
+        """
 
 rule merge_alleles:
     input: expand("results/pgx/af/{gene}_alleles.csv", gene=GENES)

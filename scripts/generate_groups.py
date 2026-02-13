@@ -51,7 +51,7 @@ def generate_genomics_metadata(input_tsv, groups_output, suffix=""):
     print(f"Created group mapping file: {groups_output} with suffix '{suffix}'")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate bcftools metadata files.")
+    parser = argparse.ArgumentParser(description="Generate bcftools group mapping files.")
     parser.add_argument("input", help="Input TSV file (sample_id, sex, country_code)")
     parser.add_argument("groups", help="Output group mapping file")
     parser.add_argument("--suffix", default="", help="Suffix for group tags (e.g., raw)")

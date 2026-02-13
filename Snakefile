@@ -2,7 +2,7 @@
 
 configfile: "config.yaml"
 
-import os, sys, json, csv
+import os, sys
 
 # --- Config Validation ---
 if not config.get("input_vcf") or not os.path.exists(config["input_vcf"]):
@@ -19,24 +19,12 @@ def get_selection_inputs(wildcards):
         files["bed"] = "resources/selection_targets.bed" if bed.startswith(("http", "ftp")) else bed
     return files
 
-def get_stats_inputs(wildcards):
-    files = {"vcf": "results/temp/03_qc.vcf.gz", "samples": config["sample_info"]}
-    return files
-
 # --- Main Rules ---
 rule all:
     input: 
         expand("results/{prefix}.sites.all.vcf.gz", prefix=config.get("output_prefix", "cohort")),
         expand("results/{prefix}.sites.pass.vcf.gz", prefix=config.get("output_prefix", "cohort")),
         expand("results/intermediate/{prefix}.full_sample_data.vcf.gz", prefix=config.get("output_prefix", "cohort"))
-
-rule finalize_output:
-    input: 
-        all_sites="results/{prefix}.sites.all.vcf.gz",
-        pass_sites="results/{prefix}.sites.pass.vcf.gz"
-    output:
-        "results/final_annotated.sites.vcf.gz" # Optional legacy output
-    shell: "cp {input.pass_sites} {output} && tabix -p vcf {output}"
 
 # --- Resources & Common Steps ---
 rule prepare_reference:
@@ -79,7 +67,7 @@ rule download_selection_bed:
 
 # --- QC Workflow ---
 
-rule generate_metadata_raw:
+rule generate_groups_raw:
     input: samples=config["sample_info"]
     output: 
         groups="results/temp/groups_raw.txt"
@@ -87,7 +75,7 @@ rule generate_metadata_raw:
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups} --suffix {params.suffix}"
 
-rule annotate_vcf:
+rule annotate_raw_vcf:
     input: 
         vcf="results/temp/02_normalized.vcf.gz", 
         groups="results/temp/groups_raw.txt"
@@ -112,7 +100,7 @@ rule genotype_masking:
         tabix -p vcf {output}
         """
 
-rule generate_metadata_final:
+rule generate_groups_final:
     input: samples=config["sample_info"]
     output: 
         groups="results/temp/groups_final.txt"
@@ -120,7 +108,7 @@ rule generate_metadata_final:
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
 
-rule calc_final_stats:
+rule annotate_final_vcf:
     input: 
         vcf="results/temp/04_masked.vcf.gz", 
         groups="results/temp/groups_final.txt"
@@ -164,7 +152,7 @@ rule variant_qc_tagging:
         tabix -p vcf {output}
         """
 
-rule create_sites_vcfs:
+rule create_sites_vcf:
     input: "results/intermediate/{prefix}.full_sample_data.vcf.gz"
     output:
         all_sites="results/{prefix}.sites.all.vcf.gz",

@@ -22,14 +22,14 @@ def get_selection_inputs(wildcards):
 # --- Main Rules ---
 rule all:
     input: 
-        "results/final_annotated.sites.vcf.gz",
-        "results/final_annotated.sites.vcf.gz.tbi"
+        expand("results/{prefix}.sites.pass.vcf.gz", prefix=config.get("output_prefix", "cohort")),
+        expand("results/{prefix}.sites.pass.vcf.gz.tbi", prefix=config.get("output_prefix", "cohort"))
 
 rule finalize_output:
     input: "results/external.sites.vcf.gz"
     output: 
-        vcf="results/final_annotated.sites.vcf.gz",
-        tbi="results/final_annotated.sites.vcf.gz.tbi"
+        vcf="results/{prefix}.sites.pass.vcf.gz",
+        tbi="results/{prefix}.sites.pass.vcf.gz.tbi"
     shell: "cp {input} {output.vcf} && tabix -p vcf {output.vcf}"
 
 # --- Resources & Common Steps ---
@@ -66,19 +66,12 @@ rule clone_pipeline_repo:
     params: url=config["external_pipeline"]["repo_url"], ver=config["external_pipeline"]["version"]
     shell: "rm -rf {output} && git clone {params.url} {output} && cd {output} && (git checkout {params.ver} || true)"
 
-rule prepare_nextflow_metadata:
+rule prepare_nextflow_groups:
     input: config["sample_info"]
-    output: "results/temp/nextflow_metadata.csv"
+    output: "results/temp/nextflow_groups.csv"
     params: country=config.get("country_code", "Unknown")
-    run:
-        sex_map = {'M':'1','F':'2','m':'1','f':'2','1':'1','2':'2'}
-        with open(input[0]) as f_in, open(output[0],'w') as f_out:
-            # Sample data file: no header, col 0 = ID, col 1 = Sex
-            reader, writer = csv.reader(f_in, delimiter='\t'), csv.writer(f_out)
-            writer.writerow(['SAMPLE','SEX','ANCESTRY'])
-            for r in reader:
-                sid, sex = r[0], r[1]
-                writer.writerow([sid, sex_map.get(str(sex).strip(),'0'), params.country])
+    shell:
+        "python scripts/prepare_beacon_groups.py {input} {output} --country {params.country}"
 
 rule prepare_nextflow_input_dir:
     input: vcf="results/temp/02_selected.vcf.gz", tbi="results/temp/02_selected.vcf.gz.tbi"
@@ -86,7 +79,7 @@ rule prepare_nextflow_input_dir:
     shell: "mkdir -p {output} && ln -sf $(readlink -f {input.vcf}) {output}/input.vcf.gz && ln -sf $(readlink -f {input.tbi}) {output}/input.vcf.gz.tbi"
 
 rule generate_nextflow_params:
-    input: vcf="results/temp/nextflow_input", meta="results/temp/nextflow_metadata.csv", repo="resources/external_pipeline"
+    input: vcf="results/temp/nextflow_input", meta="results/temp/nextflow_groups.csv", repo="resources/external_pipeline"
     output: "results/temp/nextflow_params.json"
     run:
         # Get thresholds from config

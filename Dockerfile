@@ -1,4 +1,5 @@
 FROM continuumio/miniconda3:latest
+LABEL org.opencontainers.image.source=https://github.com/Genome-of-Europe/pgx_pilot
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
@@ -18,9 +19,8 @@ RUN conda config --add channels defaults && \
     conda config --add channels conda-forge
 
 # Install Bioinformatics Tools & Snakemake
-# We include snakemake inside so the container is self-orchestrating if needed
 RUN conda install -y \
-    python=3.12 \
+    python=3.11 \
     snakemake \
     bcftools \
     pysam \
@@ -28,12 +28,16 @@ RUN conda install -y \
     samtools \
     pypgx \
     pandas \
-    openjdk=11  # Required for Picard
+    openjdk=11
 
 # Create a working directory
 WORKDIR /pipeline
 
-# Copy pipeline files (optional, depends on how you run it)
-# COPY . /pipeline
+# Copy pipeline files into the image
+COPY . /pipeline
 
+# Ensure all files are readable and executable (for Singularity)
+RUN chmod -R a+rX /pipeline
+
+# Default command
 CMD ["/bin/bash"]
