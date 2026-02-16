@@ -93,10 +93,11 @@ rule genotype_masking:
     params:
         min_gq=config["qc_thresholds"]["min_gq"],
         min_dp=config["qc_thresholds"]["min_dp"],
-        min_ab=config["qc_thresholds"]["ab_ratio"]
+        min_ab=config["qc_thresholds"]["ab_ratio"],
+        max_ab = 1 - config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        bcftools +setGT {input} -O z -o {output} -- -t q -n . -e 'FMT/GQ < {params.min_gq} || FMT/DP < {params.min_dp} || (GT="het" && (FMT/AD[0:0] + FMT/AD[0:1]) > 0 && (FMT/AD[0:1] / (FMT/AD[0:0] + FMT/AD[0:1])) < {params.min_ab})'
+        bcftools +setGT {input} -O z -o {output} -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
         tabix -p vcf {output}
         """
 
