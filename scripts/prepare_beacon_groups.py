@@ -26,7 +26,12 @@ def generate_nextflow_groups(input_tsv, output_csv, country_code="Unknown"):
     out_df = pd.DataFrame()
     out_df['SAMPLE'] = df[sid_col].astype(str).str.strip()
     out_df['SEX'] = df[sex_col].astype(str).str.strip().map(sex_map).fillna('0')
-    out_df['ANCESTRY'] = country_code
+    
+    # Use country_code from the input file if available, otherwise use the provided country_code argument
+    if 'country_code' in df.columns:
+        out_df['ANCESTRY'] = df['country_code'].astype(str).str.strip()
+    else:
+        out_df['ANCESTRY'] = country_code
     
     out_df.to_csv(output_csv, index=False)
     print(f"Created Nextflow groups file: {output_csv}")
