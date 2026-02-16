@@ -82,7 +82,7 @@ rule annotate_raw_vcf:
     output: vcf="results/temp/03_raw_stats.vcf.gz"
     shell:
         """
-        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS | \
+        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
         bcftools view -O z -o {output.vcf}
         tabix -p vcf {output.vcf}
         """
@@ -116,7 +116,7 @@ rule annotate_final_vcf:
     output: vcf="results/temp/05_final_stats.vcf.gz"
     shell:
         """
-        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS | \
+        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
         bcftools view -O z -o {output.vcf}
         tabix -p vcf {output.vcf}
         """
