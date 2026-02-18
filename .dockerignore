@@ -1,0 +1,13 @@
+data/*
+resources/*
+results/*
+work
+
+.git
+.gitignore
+.github
+
+.snakemake
+.nextflow*
+
+*.md
