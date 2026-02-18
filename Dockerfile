@@ -1,43 +1,38 @@
-FROM continuumio/miniconda3:latest
+# Use a leaner, faster base with the mamba solver pre-configured
+FROM condaforge/mambaforge:latest
+
 LABEL org.opencontainers.image.source=https://github.com/Genome-of-Europe/pgx_pilot
 
-# Set non-interactive mode
-ENV DEBIAN_FRONTEND=noninteractive
+# Metadata and non-interactive settings
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Install system basics
-RUN apt-get update && apt-get install -y \
+# Install essential system libraries in one layer and clean apt cache
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     zlib1g-dev \
     libbz2-dev \
     liblzma-dev \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Setup Conda Channels
-RUN conda config --add channels defaults && \
-    conda config --add channels bioconda && \
-    conda config --add channels conda-forge
-
-# Install Bioinformatics Tools & Snakemake
-RUN conda install -y \
-    python=3.11 \
-    snakemake \
-    bcftools \
-    pysam \
-    tabix \
-    samtools \
-    pypgx \
-    pandas \
-    openjdk=11
-
-# Create a working directory
+# Set working directory early to organize the build context
 WORKDIR /pipeline
 
-# Copy pipeline files into the image
+# Copy ONLY the environment file first to leverage Docker layer caching
+COPY env.yml /tmp/env.yml
+
+# Create the environment, clean up mamba cache
+RUN mamba env create -f /tmp/env.yml -n pgx_pilot && mamba clean -afy
+
+# Ensure the environment is on the PATH
+ENV PATH=/opt/conda/envs/pxg_pilot/bin:$PATH
+
+# Copy the rest of the pipeline code
 COPY . /pipeline
 
-# Ensure all files are readable and executable (for Singularity)
+# Permissions for HPC/Singularity compatibility
 RUN chmod -R a+rX /pipeline
 
-# Default command
 CMD ["/bin/bash"]
