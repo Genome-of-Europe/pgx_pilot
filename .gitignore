@@ -23,7 +23,7 @@ data/*
 *.bcf.csi
 
 # Logs
-*.log
+*.log*
 
 # nextflow work dir
 work/
