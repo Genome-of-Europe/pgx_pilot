@@ -27,7 +27,7 @@ COPY env.yml /tmp/env.yml
 RUN mamba env create -f /tmp/env.yml -n pgx_pilot && mamba clean -afy
 
 # Ensure the environment is on the PATH
-ENV PATH=/opt/conda/envs/pxg_pilot/bin:$PATH
+ENV PATH=/opt/conda/envs/pgx_pilot/bin:$PATH
 
 # Copy the rest of the pipeline code
 COPY . /pipeline
