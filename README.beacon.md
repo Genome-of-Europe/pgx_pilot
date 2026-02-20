@@ -30,5 +30,5 @@ docker run --rm -v $(pwd):/pipeline goe/pgx-pipeline:latest snakemake -s Snakefi
 ```
 
 ## 5. Outputs
-Results are written to the `results/` folder with the prefix specified in `config.beacon.yaml`.
-* `results/{output_prefix}.sites.pass.vcf.gz`: Stratified frequency data in Beacon format.
+Results are written to the `results/` folder:
+* `results/beacon.sites.pass.vcf.gz`: Stratified frequency data in Beacon format.
