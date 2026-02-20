@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libbz2-dev \
     liblzma-dev \
     git \
+    wget \
+    curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set working directory early to organize the build context
@@ -27,7 +29,7 @@ COPY env.yml /tmp/env.yml
 RUN mamba env create -f /tmp/env.yml -n pgx_pilot && mamba clean -afy
 
 # Ensure the environment is on the PATH
-ENV PATH=/opt/conda/envs/pxg_pilot/bin:$PATH
+ENV PATH=/opt/conda/envs/pgx_pilot/bin:$PATH
 
 # Copy the rest of the pipeline code
 COPY . /pipeline
