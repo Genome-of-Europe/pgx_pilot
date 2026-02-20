@@ -1,5 +1,4 @@
-# This is the default configuration for LOCAL execution.
-# It uses relative paths.
+# This is the configuration for the BEACON pipeline (external Nextflow pipeline).
 
 # --- Input Data ---
 input_vcf: "data/raw_cohort.vcf.gz"
@@ -7,15 +6,11 @@ genome_build: "GRCh38" # only GRCh38 for now
 country_code: "Unknown" # ISO 3166-1 alpha-2 code, used by Beacon pipeline
 sample_info: "data/samples.tsv" # Format: sample_id, sex (M/F), country_code (ISO 3166)
 
-# --- Reference Data Management ---
-resources:
-  ref_fasta_url: "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
-
 # --- Target Selection ---
 regions_bed: "resources/targets.bed"
 
 # --- Pipeline Settings ---
-output_prefix: "pgx_pilot" # Prefix for final VCF files
+output_prefix: "beacon_pilot" # Prefix for final VCF files
 
 # --- Quality Control Thresholds ---
 qc_thresholds:
@@ -30,3 +25,12 @@ qc_thresholds:
   min_gq: 20
   ab_ratio: 0.2
   max_missing: 0.1
+
+# --- Beacon Pipeline Settings ---
+external_pipeline:
+  repo_url: "https://github.com/EGA-archive/AF_bcftools_pipeline"
+  version: "main" # Git branch, tag, or commit hash
+  nextflow_args: ""
+
+# Optional: Override Nextflow default parameters here
+nextflow_params: {}

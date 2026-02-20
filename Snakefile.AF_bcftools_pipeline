@@ -1,6 +1,6 @@
 #ftype:python
 
-configfile: "config.yaml"
+configfile: "config.beacon.yaml"
 
 import os, sys, json, csv
 
@@ -92,7 +92,8 @@ rule generate_nextflow_params:
                 "genotype": {
                     "gq_threshold": qct.get("min_gq", 20),
                     "dp_threshold": qct.get("min_dp", 10),
-                    "ab_ratio_threshold": qct.get("ab_ratio", 0.2)
+                    "ab_ratio_min_threshold": qct.get("ab_ratio", 0.2),
+                    "ab_ratio_max_threshold": 1 - qct.get("ab_ratio", 0.2)
                 },
                 "variant": {
                     "qual_threshold": qct.get("qual", 30),

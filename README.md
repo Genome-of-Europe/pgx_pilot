@@ -60,7 +60,7 @@ The pipeline uses standardized thresholds for both technical and population-leve
 
 ## 5. Pipeline Workflows
 
-This repository contains three specialized workflows.
+This repository contains two specialized workflows.
 
 ### A. GoE Pipeline (`Snakefile`)
 The primary pipeline for generating standardized frequency data and high-quality internal datasets.
@@ -83,15 +83,7 @@ using docker
 docker run --rm -v $(pwd):/pipeline goe/pgx-pipeline:latest snakemake -s Snakefile -j 8
 ```
 
-### B. Beacon Pipeline (`Snakefile.AF_bcftools_pipeline`)
-A wrapper around the EGA/Beacon Nextflow pipeline.
-
-**Run Command:**
-```bash
-snakemake -s Snakefile.AF_bcftools_pipeline -j 8
-```
-
-### C. PyPGX Pipeline (`Snakefile.pypgx`)
+### B. PyPGX Pipeline (`Snakefile.pypgx`)
 A specialized workflow for Pharmacogenomics (PGx) calling using the `PyPGX` tool suite.
 
 **Run Command:**
