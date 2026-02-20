@@ -58,8 +58,8 @@ The pipeline uses a single configuration file: `config.yaml`.
 
 The sample metadata file must be a three column TSV file, with or without header, where the columns are:
 * **sample\_id**: Sample ID (same as the sample ID in the VCF file)
-* **sex**: one of (M, F, 1, 2, Male, Female, XY, XX)
-* **country\_code**: the two letter country code (ISO 3166-1 alpha-2 code)
+* **sex**: one of (M, F, 1, 2, Male, Female, XY, XX). Case-insensitive.
+* **country\_code**: the two letter country code (ISO 3166-1 alpha-2 code). Case-insensitive.
 
 **QC Thresholds:**
 The pipeline uses standardized thresholds, as defined in the `qc_thresholds` section of `config.yaml`.
