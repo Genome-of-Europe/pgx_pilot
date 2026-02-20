@@ -38,13 +38,14 @@ Repository structure:
 
 ```text
 /analysis_directory/
-├── config.yaml          # Pipeline configuration
+├── config.yaml           # Pipeline configuration
 ├── data/
 │   ├── raw_cohort.vcf.gz # Your input VCF (path set in config.yaml)
-│   └── samples.tsv      # Metadata (SampleID, Sex, CountryCode)
-├── resources/           # Folder for resources (BED targets, gene lists)
-│   └── pypgx_genes.txt  # Required for PyPGX workflow
-└── results/             # Output directory
+│   └── samples.tsv       # Metadata (SampleID, Sex, CountryCode)
+├── resources/            # Folder for resources
+│   ├── targets.bed       # BED file with PGx genes
+│   └── pypgx_genes.txt   # Required for PyPGX workflow
+└── results/              # Output directory
 ```
 
 ## 4. Configuration
@@ -104,8 +105,8 @@ Results are written to the `results/` folder.
 
 ### Main Output Files
 *   **GoE Pipeline Outputs**
-    *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File.** PASS variants only.
-    *   `results/{output_prefix}.sites.all.vcf.gz`: All variants including those that failed QC.
+    *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File for GDI MAP Stage 1.** PASS variants only.
+    *   `results/{output_prefix}.sites.all.vcf.gz`: **For GoE PGx pilot.** All variants including those that failed QC.
     *   `results/intermediate/{output_prefix}.full_sample_data.vcf.gz`: The full VCF with all sample genotypes. **Keep private.**
 
 *   **PyPGX Pipeline Outputs**
