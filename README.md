@@ -55,23 +55,20 @@ The pipeline uses a single configuration file: `config.yaml`.
 * **`input_vcf`**: Path to your input VCF file.
 * **`sample_info`**: Path to your sample metadata TSV.
 
+The sample metadata file must be a three column TSV file, with or without header, where the columns are:
+* **sample\_id**: Sample ID (same as the sample ID in the VCF file)
+* **sex**: one of (M, F, 1, 2, Male, Female)
+* **population**: the two letter country code (ISO ISO 3166-1 alpha-2 code)
+
 **QC Thresholds:**
-The pipeline uses standardized thresholds for both technical and population-level filters (MAF, HWE, etc.), all defined in the `qc_thresholds` section of `config.yaml`.
+The pipeline uses standardized thresholds, as defined in the `qc_thresholds` section of `config.yaml`.
 
 ## 5. Pipeline Workflows
 
 This repository contains two specialized workflows.
 
-### A. GoE Pipeline (`Snakefile`)
+### A. AF Pipeline (`Snakefile`)
 The primary pipeline for generating standardized frequency data and high-quality internal datasets.
-
-**Architecture:**
-1.  **Select & Normalization:** Filters variants to target regions and normalizes indels/multiallelics.
-2.  **Raw Stats:** Calculates initial population statistics using `bcftools +fill-tags`.
-3.  **Genotype QC:** Masks genotypes based on quality thresholds (GQ, DP, AB).
-4.  **Final Stats:** Recalculates statistics on the masked data.
-5.  **Variant QC:** Tags variants based on site-level metrics (QD, FS, MQ, HWE, MAF, etc.).
-6.  **Sites Output:** Generates sites-only VCFs (All & PASS only).
 
 **Run Command:**
 using conda
@@ -87,17 +84,22 @@ docker run --rm -v $(pwd):/pipeline goe/pgx-pipeline:latest snakemake -s Snakefi
 A specialized workflow for Pharmacogenomics (PGx) calling using the `PyPGX` tool suite.
 
 **Run Command:**
+using conda
 ```bash
 snakemake -s Snakefile.pypgx -j 8
 ```
+
+using docker
+```bash
+docker run --rm -v $(pwd):/pipeline goe/pgx-pipeline:latest snakemake -s Snakefile.pypgx -j 8
 
 ## 6. Outputs
 Results are written to the `results/` folder.
 
 ### Main Output Files
 *   **GoE Pipeline Outputs**
-    *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File.** PASS variants only.
-    *   `results/{output_prefix}.sites.all.vcf.gz`: All variants including those that failed QC.
+    *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File for GDI MAP Stage 1**. PASS variants only.
+    *   `results/{output_prefix}.sites.all.vcf.gz`: **File for GoE PGx pilot**. All variants including those that failed QC.
     *   `results/intermediate/{output_prefix}.full_sample_data.vcf.gz`: The full VCF with all sample genotypes. **Keep private.**
 
 *   **PyPGX Pipeline Outputs**
