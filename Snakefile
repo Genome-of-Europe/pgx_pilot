@@ -120,7 +120,7 @@ rule generate_groups_final:
 
 rule annotate_final_vcf:
     input: 
-        vcf="results/temp/04_masked.vcf.gz", 
+        vcf="results/temp/06_ploidy_fixed.vcf.gz", 
         groups="results/temp/groups_final.txt"
     output: 
         vcf="results/temp/05_final_stats.vcf.gz",
@@ -129,6 +129,25 @@ rule annotate_final_vcf:
         """
         bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
         bcftools view -O z -o {output.vcf}
+        tabix -p vcf {output.vcf}
+        """
+
+rule fix_ploidy:
+    input: 
+        vcf="results/temp/04_masked.vcf.gz",
+        samples=config["sample_info"]
+    output: 
+        vcf="results/temp/06_ploidy_fixed.vcf.gz",
+        tbi="results/temp/06_ploidy_fixed.vcf.gz.tbi"
+    shell:
+        """
+        # Generate ploidy rules from bcftools internal definition for GRCh38
+        bcftools call --ploidy GRCh38? >& results/temp/ploidy_rules.txt || true
+        
+        # Create temporary sex file for bcftools (sample_id\tsex)
+        awk -F'\\t' '{{print $1, $2}}' {input.samples} > results/temp/sex_map.txt
+        
+        bcftools +fixploidy {input.vcf} -Oz -o {output.vcf} -- -s results/temp/sex_map.txt -p results/temp/ploidy_rules.txt
         tabix -p vcf {output.vcf}
         """
 
