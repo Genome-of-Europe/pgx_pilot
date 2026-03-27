@@ -34,8 +34,8 @@ rule index_vcf:
         "tabix -pvcf {input}"
 
 rule prepare_reference:
-    input: src=lambda w: config.get("local_resources", {}).get("ref_fasta") or "resources/downloaded_GRCh38.fa.gz"
-    output: fasta="resources/GRCh38.fa", dct="resources/GRCh38.dict"
+    input: src=lambda w: config.get("local_resources", {}).get("ref_fasta") or "resources/downloaded_hg38.fa.gz"
+    output: fasta="resources/hg38.fa", dct="resources/hg38.dict"
     shell:
         """
         if [[ "{input.src}" == *.gz ]]; then gunzip -c {input.src} > {output.fasta}; else ln -sf {input.src} {output.fasta}; fi
@@ -44,7 +44,7 @@ rule prepare_reference:
         """
 
 rule download_reference_source:
-    output: "resources/downloaded_GRCh38.fa.gz"
+    output: "resources/downloaded_hg38.fa.gz"
     params: url=config["resources"]["ref_fasta_url"]
     shell: "wget --tries=3 -O {output} {params.url}"
 
@@ -62,7 +62,7 @@ rule select_regions:
         """
 
 rule normalize_and_split:
-    input: vcf="results/temp/01_selected.vcf.gz", ref="resources/GRCh38.fa"
+    input: vcf="results/temp/01_selected.vcf.gz", ref="resources/hg38.fa"
     output: "results/temp/02_normalized.vcf.gz"
     shell: "bcftools norm -m -any -f {input.ref} -O z -o {output} {input.vcf} && tabix -p vcf {output}"
 

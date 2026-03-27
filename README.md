@@ -41,7 +41,7 @@ Repository structure:
 ├── config.yaml           # Pipeline configuration
 ├── data/
 │   ├── raw_cohort.vcf.gz # Your input VCF (path set in config.yaml)
-│   └── samples.tsv       # Metadata (SampleID, Sex, CountryCode)
+│   └── samples.tsv       # Metadata (sample\_id, sex, country\_code)
 ├── resources/            # Folder for resources
 │   ├── targets.bed       # BED file with PGx genes
 │   └── pypgx_genes.txt   # Required for PyPGX workflow

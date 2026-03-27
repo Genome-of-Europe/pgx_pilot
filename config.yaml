@@ -3,7 +3,6 @@
 
 # --- Input Data ---
 input_vcf: "data/raw_cohort.vcf.gz"
-genome_build: "GRCh38" # only GRCh38 for now
 country_code: "Unknown" # ISO 3166-1 alpha-2 code, used by Beacon pipeline
 sample_info: "data/samples.tsv" # Format: sample_id, sex (M/F), country_code (ISO 3166)
 
