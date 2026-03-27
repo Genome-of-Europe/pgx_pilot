@@ -35,12 +35,11 @@ rule index_vcf:
 
 rule prepare_reference:
     input: src=lambda w: config.get("local_resources", {}).get("ref_fasta") or "resources/downloaded_hg38.fa.gz"
-    output: fasta="resources/hg38.fa", dct="resources/hg38.dict"
+    output: fasta="resources/hg38.fa", fai="resources/hg38.fa.fai"
     shell:
         """
         if [[ "{input.src}" == *.gz ]]; then gunzip -c {input.src} > {output.fasta}; else ln -sf {input.src} {output.fasta}; fi
         samtools faidx {output.fasta}
-        samtools dict {output.fasta} > {output.dct}
         """
 
 rule download_reference_source:
@@ -51,20 +50,20 @@ rule download_reference_source:
 # --- Pipeline Rules ---
 rule select_regions:
     input: unpack(get_selection_inputs)
-    output: "results/temp/01_selected.vcf.gz"
+    output: vcf="results/temp/01_selected.vcf.gz", tbi="results/temp/01_selected.vcf.gz.tbi"
     params: 
         bed=config.get("regions_bed", ""), 
         bed_path=lambda w: "resources/selection_targets.bed" if config.get("regions_bed", "").startswith(("http", "ftp")) else config.get("regions_bed", "")
     shell:
         """
-        bcftools view -R {params.bed_path} {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output}
-        tabix -p vcf {output}
+        bcftools view -R {params.bed_path} {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+        tabix -p vcf {output.vcf}
         """
 
 rule normalize_and_split:
     input: vcf="results/temp/01_selected.vcf.gz", ref="resources/hg38.fa"
-    output: "results/temp/02_normalized.vcf.gz"
-    shell: "bcftools norm -m -any -f {input.ref} -O z -o {output} {input.vcf} && tabix -p vcf {output}"
+    output: vcf="results/temp/02_normalized.vcf.gz", tbi="results/temp/02_normalized.vcf.gz.tbi"
+    shell: "bcftools norm -m -any -f {input.ref} -O z -o {output.vcf} {input.vcf} && tabix -p vcf {output.vcf}"
 
 rule download_selection_bed:
     output: "resources/selection_targets.bed"
@@ -85,7 +84,9 @@ rule annotate_raw_vcf:
     input: 
         vcf="results/temp/02_normalized.vcf.gz", 
         groups="results/temp/groups_raw.txt"
-    output: vcf="results/temp/03_raw_stats.vcf.gz"
+    output: 
+        vcf="results/temp/03_raw_stats.vcf.gz",
+        tbi="results/temp/03_raw_stats.vcf.gz.tbi"
     shell:
         """
         bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
@@ -95,7 +96,9 @@ rule annotate_raw_vcf:
 
 rule genotype_masking:
     input: "results/temp/03_raw_stats.vcf.gz"
-    output: "results/temp/04_masked.vcf.gz"
+    output: 
+        vcf="results/temp/04_masked.vcf.gz",
+        tbi="results/temp/04_masked.vcf.gz.tbi"
     params:
         min_gq=config["qc_thresholds"]["min_gq"],
         min_dp=config["qc_thresholds"]["min_dp"],
@@ -103,8 +106,8 @@ rule genotype_masking:
         max_ab = 1 - config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        bcftools +setGT {input} -O z -o {output} -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
-        tabix -p vcf {output}
+        bcftools +setGT {input} -O z -o {output.vcf} -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
+        tabix -p vcf {output.vcf}
         """
 
 rule generate_groups_final:
@@ -119,7 +122,9 @@ rule annotate_final_vcf:
     input: 
         vcf="results/temp/04_masked.vcf.gz", 
         groups="results/temp/groups_final.txt"
-    output: vcf="results/temp/05_final_stats.vcf.gz"
+    output: 
+        vcf="results/temp/05_final_stats.vcf.gz",
+        tbi="results/temp/05_final_stats.vcf.gz.tbi"
     shell:
         """
         bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
@@ -129,7 +134,9 @@ rule annotate_final_vcf:
 
 rule variant_qc_tagging:
     input: "results/temp/05_final_stats.vcf.gz"
-    output: "results/intermediate/{prefix}.full_sample_data.vcf.gz"
+    output: 
+        vcf="results/intermediate/{prefix}.full_sample_data.vcf.gz",
+        tbi="results/intermediate/{prefix}.full_sample_data.vcf.gz.tbi"
     params:
         qual=config["qc_thresholds"]["qual"],
         qd=config["qc_thresholds"]["qd"],
@@ -144,7 +151,7 @@ rule variant_qc_tagging:
         ab_ratio=config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        python scripts/tag_variant_qc.py {input} {output} \
+        python scripts/tag_variant_qc.py {input} {output.vcf} \
             --qual {params.qual} \
             --qd {params.qd} \
             --mq {params.mq} \
@@ -156,14 +163,16 @@ rule variant_qc_tagging:
             --min_dp {params.min_dp} \
             --min_gq {params.min_gq} \
             --ab_ratio {params.ab_ratio}
-        tabix -p vcf {output}
+        tabix -p vcf {output.vcf}
         """
 
 rule create_sites_vcf:
     input: "results/intermediate/{prefix}.full_sample_data.vcf.gz"
     output:
         all_sites="results/{prefix}.sites.all.vcf.gz",
-        pass_sites="results/{prefix}.sites.pass.vcf.gz"
+        all_sites_tbi="results/{prefix}.sites.all.vcf.gz.tbi",
+        pass_sites="results/{prefix}.sites.pass.vcf.gz",
+        pass_sites_tbi="results/{prefix}.sites.pass.vcf.gz.tbi"
     shell:
         """
         bcftools view -G -O z -o {output.all_sites} {input}
