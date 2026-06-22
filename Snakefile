@@ -142,7 +142,7 @@ rule fix_ploidy:
     shell:
         """
         # Generate ploidy rules from bcftools internal definition for GRCh38
-        bcftools call --ploidy GRCh38? >& results/temp/ploidy_rules.txt || true
+        bcftools call --ploidy GRCh38? >& results/temp/ploidy_rules.txt 
         
         # Create temporary sex file for bcftools (sample_id\tsex)
         awk -F'\\t' '{{print $1, $2}}' {input.samples} > results/temp/sex_map.txt
