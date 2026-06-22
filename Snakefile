@@ -8,15 +8,9 @@ import os, sys
 if not config.get("input_vcf") or not os.path.exists(config["input_vcf"]):
     sys.exit(f"ERROR: input_vcf file not found at: '{config.get('input_vcf')}'.")
 
-if not config.get("regions_bed"):
-    sys.exit("ERROR: 'regions_bed' parameter is required in config.yaml.")
-
 # --- Helper Functions ---
 def get_selection_inputs(wildcards):
     files = {"vcf": config["input_vcf"]}
-    bed = config.get("regions_bed")
-    if bed: 
-        files["bed"] = "resources/selection_targets.bed" if bed.startswith(("http", "ftp")) else bed
     return files
 
 # --- Main Rules ---
@@ -52,11 +46,9 @@ rule select_regions:
     input: unpack(get_selection_inputs)
     output: vcf="results/temp/01_selected.vcf.gz", tbi="results/temp/01_selected.vcf.gz.tbi"
     params: 
-        bed=config.get("regions_bed", ""), 
-        bed_path=lambda w: "resources/selection_targets.bed" if config.get("regions_bed", "").startswith(("http", "ftp")) else config.get("regions_bed", "")
     shell:
         """
-        bcftools view -R {params.bed_path} {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+        bcftools view {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
@@ -65,10 +57,6 @@ rule normalize_and_split:
     output: vcf="results/temp/02_normalized.vcf.gz", tbi="results/temp/02_normalized.vcf.gz.tbi"
     shell: "bcftools norm -m -any -f {input.ref} -O z -o {output.vcf} {input.vcf} && tabix -p vcf {output.vcf}"
 
-rule download_selection_bed:
-    output: "resources/selection_targets.bed"
-    params: url=config.get("regions_bed")
-    shell: "wget --tries=3 -O {output} {params.url}"
 
 # --- QC Workflow ---
 
