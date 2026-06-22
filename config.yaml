@@ -11,7 +11,7 @@ resources:
   ref_fasta_url: "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
 
 # --- Target Selection ---
-regions_bed: "resources/targets.bed"
+target_genes: "resources/target_genes.txt" # List of gene symbols, one per line
 
 # --- Pipeline Settings ---
 output_prefix: "pgx_pilot" # Prefix for final VCF files
