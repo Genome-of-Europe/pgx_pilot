@@ -9,16 +9,21 @@ def main():
     args = parser.parse_args()
     
     try:
-        # Detect header
+        # Simple header check: does the first column header equal "sample_id"?
         with open(args.input, 'r') as f:
             first_line = f.readline()
-            has_header = any(keyword in first_line.lower() for keyword in ["sample", "sex", "id", "country"])
+        has_header = first_line.split('\t')[0].lower().strip() == "sample_id"
         
         if has_header:
             df = pd.read_csv(args.input, sep='\t')
             df.columns = [c.lower().strip() for c in df.columns]
         else:
-            df = pd.read_csv(args.input, sep='\t', header=None, names=['sample_id', 'sex', 'country_code'])
+            # Position-based fallback: col 0 is sample_id, col 1 is sex
+            df = pd.read_csv(args.input, sep='\t', header=None)
+            if len(df.columns) >= 2:
+                df.columns = ['sample_id', 'sex'] + list(df.columns[2:])
+            else:
+                raise ValueError("Input file must have at least 2 tab-separated columns.")
             
         # Standardize sex mapping
         sex_map = {
