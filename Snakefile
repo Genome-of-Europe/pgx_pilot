@@ -126,16 +126,19 @@ rule fix_ploidy:
         samples=config["sample_info"]
     output: 
         vcf="results/temp/06_ploidy_fixed.vcf.gz",
-        tbi="results/temp/06_ploidy_fixed.vcf.gz.tbi"
+        tbi="results/temp/06_ploidy_fixed.vcf.gz.tbi",
+        sex_map="results/temp/sex_map.txt"
     shell:
         """
-        # Generate ploidy rules from bcftools internal definition for GRCh38
-        bcftools call --ploidy GRCh38? >& results/temp/ploidy_rules.txt 
+        # Generate ploidy rules from bcftools internal definition for GRCh38.
+        # BCFtools returns exit code 255 when querying ploidy configurations; 
+        # "|| true" forces a 0 exit code to prevent Snakemake from failing.
+        bcftools call --ploidy GRCh38? > results/temp/ploidy_rules.txt 2>&1 || true
         
-        # Create temporary sex file for bcftools (sample_id\tsex)
-        awk -F'\\t' '{{print $1, $2}}' {input.samples} > results/temp/sex_map.txt
+        # Cleanly generate the standardized sex map
+        python scripts/generate_sex_map.py {input.samples} {output.sex_map}
         
-        bcftools +fixploidy {input.vcf} -Oz -o {output.vcf} -- -s results/temp/sex_map.txt -p results/temp/ploidy_rules.txt
+        bcftools +fixploidy {input.vcf} -Oz -o {output.vcf} -- -s {output.sex_map} -p results/temp/ploidy_rules.txt
         tabix -p vcf {output.vcf}
         """
 
