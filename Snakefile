@@ -43,14 +43,49 @@ rule download_reference_source:
     params: url=config["resources"]["ref_fasta_url"]
     shell: "wget --tries=3 -O {output} {params.url}"
 
+rule generate_chr_map:
+    input:
+        vcf=config["input_vcf"]
+    output:
+        map_file="results/temp/chr_map.txt"
+    run:
+        import pysam
+        has_chr = False
+        with pysam.VariantFile(input.vcf) as v:
+            for record in v:
+                if record.chrom.startswith("chr"):
+                    has_chr = True
+                break
+        
+        with open(output.map_file, "w") as f:
+            if not has_chr:
+                # Write mapping from Ensembl to UCSC (e.g. "1 chr1")
+                for i in range(1, 23):
+                    f.write(f"{i}\tchr{i}\n")
+                f.write("X\tchrX\n")
+                f.write("Y\tchrY\n")
+                f.write("MT\tchrM\n")
+            else:
+                # No-op (empty map file means no renaming)
+                pass
+
 # --- Pipeline Rules ---
 rule select_regions:
-    input: unpack(get_selection_inputs)
+    input:
+        vcf=config["input_vcf"],
+        chr_map="results/temp/chr_map.txt"
     output: vcf="results/temp/01_selected.vcf.gz"
-    params: 
     shell:
         """
-        bcftools view -t {CANONICAL_CHRS} {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+        # If the map file is not empty, rename chromosomes first
+        if [ -s {input.chr_map} ]; then
+            bcftools annotate --rename-chrs {input.chr_map} {input.vcf} -Ou | \
+            bcftools view -t {CANONICAL_CHRS} -Ou | \
+            bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+        else
+            bcftools view -t {CANONICAL_CHRS} {input.vcf} | \
+            bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+        fi
         """
 
 rule normalize_and_split:
