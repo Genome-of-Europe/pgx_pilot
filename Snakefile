@@ -4,6 +4,8 @@ configfile: "config.yaml"
 
 import os, sys
 
+CANONICAL_CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY,chrM"
+
 # --- Config Validation ---
 if not config.get("input_vcf") or not os.path.exists(config["input_vcf"]):
     sys.exit(f"ERROR: input_vcf file not found at: '{config.get('input_vcf')}'.")
@@ -44,18 +46,17 @@ rule download_reference_source:
 # --- Pipeline Rules ---
 rule select_regions:
     input: unpack(get_selection_inputs)
-    output: vcf="results/temp/01_selected.vcf.gz", tbi="results/temp/01_selected.vcf.gz.tbi"
+    output: vcf="results/temp/01_selected.vcf.gz"
     params: 
     shell:
         """
-        bcftools view {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output.vcf}
-        tabix -p vcf {output.vcf}
+        bcftools view -t {CANONICAL_CHRS} {input.vcf} | bcftools view -e 'ALT="*"' -O z -o {output.vcf}
         """
 
 rule normalize_and_split:
     input: vcf="results/temp/01_selected.vcf.gz", ref="resources/hg38.fa"
-    output: vcf="results/temp/02_normalized.vcf.gz", tbi="results/temp/02_normalized.vcf.gz.tbi"
-    shell: "bcftools norm -m -any -f {input.ref} -O z -o {output.vcf} {input.vcf} && tabix -p vcf {output.vcf}"
+    output: vcf="results/temp/02_normalized.vcf.gz"
+    shell: "bcftools norm -m -any -f {input.ref} -O z -o {output.vcf} {input.vcf}"
 
 
 # --- QC Workflow ---
