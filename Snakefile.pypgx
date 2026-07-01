@@ -52,17 +52,17 @@ rule preprocess_vcf_for_pypgx:
         awk 'BEGIN{{FS=OFS="\\t"}} 
         /^#/ {{print; next}}
         {{
-            split($$9, f, ":"); ad = 0;
+            split($9, f, ":"); ad = 0;
             for(i=1; i<=length(f); i++) if(f[i] == "AD") ad = i;
             
             if(ad){{
                 for(i=10; i<=NF; i++){{
-                    split($$i, s, ":");
+                    split($i, s, ":");
                     if(s[ad] ~ /^[.,]+$/) s[ad] = ".";
                     
                     x = s[1];
                     for(j=2; j<=length(s); j++) x = x ":" s[j];
-                    $$i = x;
+                    $i = x;
                 }}
             }}
             print;
