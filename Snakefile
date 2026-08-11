@@ -91,7 +91,13 @@ rule select_regions:
 rule normalize_and_split:
     input: vcf="results/temp/01_selected.vcf.gz", ref="resources/hg38.fa"
     output: vcf="results/temp/02_normalized.vcf.gz"
-    shell: "bcftools norm -m -any -f {input.ref} -O z -o {output.vcf} {input.vcf}"
+    shell:
+        """
+        bcftools norm --force -m -any -f {input.ref} -Ou {input.vcf} | \
+        bcftools view -e 'ALT="*"' -Ou | \
+        bcftools annotate -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
+        bcftools norm --rm-dup exact -Oz -o {output.vcf}
+        """
 
 
 # --- QC Workflow ---
