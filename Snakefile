@@ -49,13 +49,10 @@ rule generate_chr_map:
     output:
         map_file="results/temp/chr_map.txt"
     run:
-        import pysam
-        has_chr = False
-        with pysam.VariantFile(input.vcf) as v:
-            for record in v:
-                if record.chrom.startswith("chr"):
-                    has_chr = True
-                break
+        from cyvcf2 import VCF
+        vcf = VCF(input.vcf)
+        has_chr = any(seq.startswith("chr") for seq in vcf.seqnames)
+        vcf.close()
         
         with open(output.map_file, "w") as f:
             if not has_chr:
@@ -94,7 +91,6 @@ rule normalize_and_split:
     shell:
         """
         bcftools norm --force -m -any -f {input.ref} -Ou {input.vcf} | \
-        bcftools view -e 'ALT="*"' -Ou | \
         bcftools annotate -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
         bcftools norm --rm-dup exact -Oz -o {output.vcf}
         """

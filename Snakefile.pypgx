@@ -46,29 +46,9 @@ rule preprocess_vcf_for_pypgx:
         """
         # Workaround: PyPGX run-ngs-pipeline crashes on bcftools-normalized VCF files
         # when it encounters comma-separated missing values in the format fields 
-        # (e.g. AD=".,." for masked/missing genotypes). This awk step normalizes any
-        # sequence of dots/commas in the AD field to a single "." which PyPGX handles correctly.
-        bcftools view -O v {input.vcf} | \
-        awk 'BEGIN{{FS=OFS="\\t"}} 
-        /^#/ {{print; next}}
-        {{
-            split($9, f, ":"); ad = 0;
-            for(i=1; i<=length(f); i++) if(f[i] == "AD") ad = i;
-            
-            if(ad){{
-                for(i=10; i<=NF; i++){{
-                    split($i, s, ":");
-                    if(s[ad] ~ /^[.,]+$/) s[ad] = ".";
-                    
-                    x = s[1];
-                    for(j=2; j<=length(s); j++) x = x ":" s[j];
-                    $i = x;
-                }}
-            }}
-            print;
-        }}' | bgzip -c > {output.vcf}
-        
-        tabix -p vcf {output.vcf}
+        # (e.g. AD=".,." for masked/missing genotypes). This cyvcf2 script normalizes any
+        # all-missing AD vector to a single "." using HTSlib vector-end encoding.
+        python scripts/preprocess_vcf_for_pypgx.py {input.vcf} {output.vcf}
         """
 
 rule run_pypgx:
