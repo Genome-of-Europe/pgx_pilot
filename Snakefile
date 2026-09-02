@@ -10,11 +10,6 @@ CANONICAL_CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,c
 if not config.get("input_vcf") or not os.path.exists(config["input_vcf"]):
     sys.exit(f"ERROR: input_vcf file not found at: '{config.get('input_vcf')}'.")
 
-# --- Helper Functions ---
-def get_selection_inputs(wildcards):
-    files = {"vcf": config["input_vcf"]}
-    return files
-
 # --- Main Rules ---
 rule all:
     input: 
@@ -144,27 +139,13 @@ rule generate_groups_final:
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
 
-rule annotate_final_vcf:
-    input: 
-        vcf="results/temp/06_ploidy_fixed.vcf.gz", 
-        groups="results/temp/groups_final.txt"
-    output: 
-        vcf="results/temp/05_final_stats.vcf.gz",
-        tbi="results/temp/05_final_stats.vcf.gz.tbi"
-    shell:
-        """
-        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
-        bcftools view -O z -o {output.vcf}
-        tabix -p vcf {output.vcf}
-        """
-
 rule fix_ploidy:
     input: 
         vcf="results/temp/04_masked.vcf.gz",
         samples=config["sample_info"]
     output: 
-        vcf="results/temp/06_ploidy_fixed.vcf.gz",
-        tbi="results/temp/06_ploidy_fixed.vcf.gz.tbi",
+        vcf="results/temp/05_ploidy_fixed.vcf.gz",
+        tbi="results/temp/05_ploidy_fixed.vcf.gz.tbi",
         sex_map="results/temp/sex_map.txt"
     shell:
         """
@@ -180,8 +161,22 @@ rule fix_ploidy:
         tabix -p vcf {output.vcf}
         """
 
+rule annotate_final_vcf:
+    input: 
+        vcf="results/temp/05_ploidy_fixed.vcf.gz", 
+        groups="results/temp/groups_final.txt"
+    output: 
+        vcf="results/temp/06_final_stats.vcf.gz",
+        tbi="results/temp/06_final_stats.vcf.gz.tbi"
+    shell:
+        """
+        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
+        bcftools view -O z -o {output.vcf}
+        tabix -p vcf {output.vcf}
+        """
+
 rule variant_qc_tagging:
-    input: "results/temp/05_final_stats.vcf.gz"
+    input: "results/temp/06_final_stats.vcf.gz"
     output: 
         vcf="results/intermediate/{prefix}.full_sample_data.vcf.gz",
         tbi="results/intermediate/{prefix}.full_sample_data.vcf.gz.tbi"

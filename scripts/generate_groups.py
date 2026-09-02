@@ -1,20 +1,38 @@
-import pandas as pd
+"""Generate bcftools group mapping files for stratified population frequency calculations."""
+
 import argparse
 import sys
+import pandas as pd
 
-def generate_genomics_metadata(input_tsv, groups_output, suffix=""):
+
+def generate_genomics_metadata(input_tsv: str, groups_output: str, suffix: str = "") -> None:
+    """Generate a sample-to-group mapping file for bcftools +fill-tags.
+
+    Parameters
+    ----------
+    input_tsv : str
+        Path to the sample information TSV (sample_id, sex, country_code).
+    groups_output : str
+        Path to the destination group mapping text file.
+    suffix : str, optional
+        Optional tag suffix to append to group names (e.g. 'raw').
+    """
     try:
-        # Read the first few lines to detect header
-        with open(input_tsv, 'r') as f:
+        # Robust header detection: inspect exact keywords of the first columns
+        with open(input_tsv, "r") as f:
             first_line = f.readline()
-            has_header = any(keyword in first_line.lower() for keyword in ["sample", "sex", "id", "country"])
-        
+        first_fields = [f.strip().lower() for f in first_line.split("\t")]
+        has_header = (
+            (len(first_fields) > 0 and first_fields[0] in {"sample_id", "sample", "id", "sampleid", "samples"})
+            or (len(first_fields) > 1 and first_fields[1] in {"sex", "gender"})
+        )
+
         if has_header:
-            df = pd.read_csv(input_tsv, sep='\t')
+            df = pd.read_csv(input_tsv, sep="\t")
             df.columns = [c.lower().strip() for c in df.columns]
         else:
             # Assume order: sample_id, sex, country_code
-            df = pd.read_csv(input_tsv, sep='\t', header=None, names=['sample_id', 'sex', 'country_code'])
+            df = pd.read_csv(input_tsv, sep="\t", header=None, names=["sample_id", "sex", "country_code"])
     except Exception as e:
         print(f"Error reading input file: {e}")
         sys.exit(1)

@@ -74,7 +74,7 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
     for record in vcf_in:
         reasons = []
 
-        if record.QUAL is not None and record.QUAL < qual_thresh:
+        if record.QUAL is not None and record.QUAL >= 0 and record.QUAL < qual_thresh:
             reasons.append("FAIL_QUAL")
 
         info = record.INFO
