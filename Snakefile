@@ -2,13 +2,14 @@
 
 configfile: "config.yaml"
 
-import os, sys
+import os
+from snakemake.exceptions import WorkflowError
 
 CANONICAL_CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY,chrM"
 
 # --- Config Validation ---
-if not config.get("input_vcf") or not os.path.exists(config["input_vcf"]):
-    sys.exit(f"ERROR: input_vcf file not found at: '{config.get('input_vcf')}'.")
+if not config.get("input_vcf"):
+    raise WorkflowError("Configuration error: 'input_vcf' is not specified in config.yaml.")
 
 # --- Main Rules ---
 rule all:
@@ -29,7 +30,11 @@ rule prepare_reference:
     output: fasta="resources/hg38.fa", fai="resources/hg38.fa.fai"
     shell:
         """
-        if [[ "{input.src}" == *.gz ]]; then gunzip -c {input.src} > {output.fasta}; else ln -sf {input.src} {output.fasta}; fi
+        if [[ "{input.src}" == *.gz ]]; then 
+            gunzip -c {input.src} > {output.fasta}
+        else 
+            ln -sf $(realpath "{input.src}") {output.fasta}
+        fi
         samtools faidx {output.fasta}
         """
 
@@ -139,25 +144,29 @@ rule generate_groups_final:
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
 
+rule generate_ploidy_rules:
+    output:
+        ploidy="results/temp/ploidy_rules.txt"
+    shell:
+        # BCFtools returns non-zero when querying built-in ploidy definitions;
+        # redirect stdout cleanly and use || true to prevent shell abort.
+        "bcftools call --ploidy GRCh38? 1> {output.ploidy} 2>/dev/null || true"
+
 rule fix_ploidy:
     input: 
         vcf="results/temp/04_masked.vcf.gz",
-        samples=config["sample_info"]
+        samples=config["sample_info"],
+        ploidy=rules.generate_ploidy_rules.output.ploidy
     output: 
         vcf="results/temp/05_ploidy_fixed.vcf.gz",
         tbi="results/temp/05_ploidy_fixed.vcf.gz.tbi",
         sex_map="results/temp/sex_map.txt"
     shell:
         """
-        # Generate ploidy rules from bcftools internal definition for GRCh38.
-        # BCFtools returns exit code 255 when querying ploidy configurations; 
-        # "|| true" forces a 0 exit code to prevent Snakemake from failing.
-        bcftools call --ploidy GRCh38? > results/temp/ploidy_rules.txt 2>&1 || true
-        
         # Cleanly generate the standardized sex map
         python scripts/generate_sex_map.py {input.samples} {output.sex_map}
         
-        bcftools +fixploidy {input.vcf} -Oz -o {output.vcf} -- -s {output.sex_map} -p results/temp/ploidy_rules.txt
+        bcftools +fixploidy {input.vcf} -Oz -o {output.vcf} -- -s {output.sex_map} -p {input.ploidy}
         tabix -p vcf {output.vcf}
         """
 
