@@ -43,8 +43,7 @@ Repository structure:
 │   ├── raw_cohort.vcf.gz # Your input VCF (path set in config.yaml)
 │   └── samples.tsv       # Metadata (sample\_id, sex, country\_code)
 ├── resources/            # Folder for resources
-│   ├── targets.bed       # BED file with PGx genes
-│   └── pypgx_genes.txt   # Required for PyPGX workflow
+│   └── target_genes.txt  # Target pharmacogenes list
 └── results/              # Output directory
 ```
 

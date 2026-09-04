@@ -132,14 +132,26 @@ rule calculate_stratified_af:
 rule merge_alleles:
     input: expand("results/pgx/af/{gene}_alleles.csv", gene=GENES)
     output: "results/pgx/merged_alleles.csv"
-    run: pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
+        pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
 
 rule merge_genotypes:
     input: expand("results/pgx/af/{gene}_genotypes.csv", gene=GENES)
     output: "results/pgx/merged_genotypes.csv"
-    run: pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
+        pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
 
 rule merge_phenotypes:
     input: expand("results/pgx/af/{gene}_phenotypes.csv", gene=GENES)
     output: "results/pgx/merged_phenotypes.csv"
-    run: pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
+        pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)

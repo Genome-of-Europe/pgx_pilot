@@ -19,12 +19,6 @@ rule all:
         expand("results/intermediate/{prefix}.full_sample_data.vcf.gz", prefix=config.get("output_prefix", "cohort"))
 
 # --- Resources & Common Steps ---
-rule index_vcf:
-    input: "{filename}.vcf.gz"
-    output: "{filename}.vcf.gz.tbi"
-    shell:
-        "tabix -pvcf {input}"
-
 rule prepare_reference:
     input: src=lambda w: config.get("local_resources", {}).get("ref_fasta") or "resources/downloaded_hg38.fa.gz"
     output: fasta="resources/hg38.fa", fai="resources/hg38.fa.fai"
