@@ -1,5 +1,6 @@
 data/*
 resources/*
+!resources/target_genes.txt
 results/*
 work
 
@@ -12,3 +13,4 @@ work
 
 *.md
 *.txt
+!resources/target_genes.txt
