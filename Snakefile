@@ -66,27 +66,29 @@ rule select_regions:
         vcf=config["input_vcf"],
         chr_map="results/temp/chr_map.txt"
     output: vcf="results/temp/01_selected.vcf.gz"
+    threads: 4
     shell:
         """
         # If the map file is not empty, rename chromosomes first
         if [ -s {input.chr_map} ]; then
-            bcftools annotate --rename-chrs {input.chr_map} {input.vcf} -Ou | \
-            bcftools view -t {CANONICAL_CHRS} -Ou | \
-            bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+            bcftools annotate --threads {threads} --rename-chrs {input.chr_map} {input.vcf} -Ou | \
+            bcftools view --threads {threads} -t {CANONICAL_CHRS} -Ou | \
+            bcftools view --threads {threads} -e 'ALT="*"' -O z -o {output.vcf}
         else
-            bcftools view -t {CANONICAL_CHRS} {input.vcf} | \
-            bcftools view -e 'ALT="*"' -O z -o {output.vcf}
+            bcftools view --threads {threads} -t {CANONICAL_CHRS} {input.vcf} -Ou | \
+            bcftools view --threads {threads} -e 'ALT="*"' -O z -o {output.vcf}
         fi
         """
 
 rule normalize_and_split:
     input: vcf="results/temp/01_selected.vcf.gz", ref="resources/hg38.fa"
     output: vcf="results/temp/02_normalized.vcf.gz"
+    threads: 4
     shell:
         """
-        bcftools norm --force -m -any -f {input.ref} -Ou {input.vcf} | \
-        bcftools annotate -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
-        bcftools norm --rm-dup exact -Oz -o {output.vcf}
+        bcftools norm --threads {threads} --force -m -any -f {input.ref} -Ou {input.vcf} | \
+        bcftools annotate --threads {threads} -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
+        bcftools norm --threads {threads} --rm-dup exact -Oz -o {output.vcf}
         """
 
 
@@ -107,11 +109,12 @@ rule annotate_raw_vcf:
     output: 
         vcf="results/temp/03_raw_stats.vcf.gz",
         tbi="results/temp/03_raw_stats.vcf.gz.tbi"
+    threads: 4
     shell:
         """
-        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
-        bcftools view -O z -o {output.vcf}
-        tabix -p vcf {output.vcf}
+        bcftools +fill-tags --threads {threads} {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
+        bcftools view --threads {threads} -O z -o {output.vcf}
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule genotype_masking:
@@ -119,6 +122,7 @@ rule genotype_masking:
     output: 
         vcf="results/temp/04_masked.vcf.gz",
         tbi="results/temp/04_masked.vcf.gz.tbi"
+    threads: 4
     params:
         min_gq=config["qc_thresholds"]["min_gq"],
         min_dp=config["qc_thresholds"]["min_dp"],
@@ -126,8 +130,8 @@ rule genotype_masking:
         max_ab = 1 - config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        bcftools +setGT {input} -O z -o {output.vcf} -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
-        tabix -p vcf {output.vcf}
+        bcftools +setGT --threads {threads} {input} -O z -o {output.vcf} -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule generate_groups_final:
@@ -155,13 +159,14 @@ rule fix_ploidy:
         vcf="results/temp/05_ploidy_fixed.vcf.gz",
         tbi="results/temp/05_ploidy_fixed.vcf.gz.tbi",
         sex_map="results/temp/sex_map.txt"
+    threads: 4
     shell:
         """
         # Cleanly generate the standardized sex map
         python scripts/generate_sex_map.py {input.samples} {output.sex_map}
         
-        bcftools +fixploidy {input.vcf} -Oz -o {output.vcf} -- -s {output.sex_map} -p {input.ploidy}
-        tabix -p vcf {output.vcf}
+        bcftools +fixploidy --threads {threads} {input.vcf} -Oz -o {output.vcf} -- -s {output.sex_map} -p {input.ploidy}
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule annotate_final_vcf:
@@ -171,11 +176,12 @@ rule annotate_final_vcf:
     output: 
         vcf="results/temp/06_final_stats.vcf.gz",
         tbi="results/temp/06_final_stats.vcf.gz.tbi"
+    threads: 4
     shell:
         """
-        bcftools +fill-tags {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
-        bcftools view -O z -o {output.vcf}
-        tabix -p vcf {output.vcf}
+        bcftools +fill-tags --threads {threads} {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
+        bcftools view --threads {threads} -O z -o {output.vcf}
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule variant_qc_tagging:
@@ -183,6 +189,7 @@ rule variant_qc_tagging:
     output: 
         vcf="results/intermediate/{prefix}.full_sample_data.vcf.gz",
         tbi="results/intermediate/{prefix}.full_sample_data.vcf.gz.tbi"
+    threads: 4
     params:
         qual=config["qc_thresholds"]["qual"],
         qd=config["qc_thresholds"]["qd"],
@@ -209,7 +216,7 @@ rule variant_qc_tagging:
             --min_dp {params.min_dp} \
             --min_gq {params.min_gq} \
             --ab_ratio {params.ab_ratio}
-        tabix -p vcf {output.vcf}
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule create_sites_vcf:
@@ -219,12 +226,13 @@ rule create_sites_vcf:
         all_sites_tbi="results/{prefix}.sites.all.vcf.gz.tbi",
         pass_sites="results/{prefix}.sites.pass.vcf.gz",
         pass_sites_tbi="results/{prefix}.sites.pass.vcf.gz.tbi"
+    threads: 4
     shell:
         """
-        bcftools view -G -O z -o {output.all_sites} {input}
-        tabix -p vcf {output.all_sites}
+        bcftools view --threads {threads} -G -O z -o {output.all_sites} {input}
+        bcftools index --threads {threads} -t {output.all_sites}
         
         # Filter for PASS status.
-        bcftools view -G -i 'INFO/QC_STATUS="PASS"' {input} -O z -o {output.pass_sites}
-        tabix -p vcf {output.pass_sites}
+        bcftools view --threads {threads} -G -i 'INFO/QC_STATUS="PASS"' {input} -O z -o {output.pass_sites}
+        bcftools index --threads {threads} -t {output.pass_sites}
         """

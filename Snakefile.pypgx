@@ -73,8 +73,9 @@ rule extract_target_genes:
         bed=rules.create_target_bed.output.bed
     output:
         vcf=temp("results/temp/target_genes_raw.vcf.gz")
+    threads: 2
     shell:
-        "bcftools view -R {input.bed} -O z -o {output.vcf} {input.vcf}"
+        "bcftools view --threads {threads} -R {input.bed} -O z -o {output.vcf} {input.vcf}"
 
 rule format_vcf_for_pypgx:
     input:
@@ -82,6 +83,7 @@ rule format_vcf_for_pypgx:
     output:
         vcf="results/temp/preprocessed_for_pypgx.vcf.gz",
         tbi="results/temp/preprocessed_for_pypgx.vcf.gz.tbi"
+    threads: 2
     shell:
         """
         # Workaround: PyPGX run-ngs-pipeline crashes on bcftools-normalized VCF files
@@ -89,6 +91,7 @@ rule format_vcf_for_pypgx:
         # (e.g. AD=".,." for masked/missing genotypes). This cyvcf2 script normalizes any
         # all-missing AD vector to a single "." using HTSlib vector-end encoding.
         python scripts/preprocess_vcf_for_pypgx.py {input.vcf} {output.vcf}
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule run_pypgx:

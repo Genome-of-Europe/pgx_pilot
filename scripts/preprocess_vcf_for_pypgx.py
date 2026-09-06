@@ -7,7 +7,6 @@ vector-end encoding.
 """
 
 import argparse
-import subprocess
 from cyvcf2 import VCF, Writer
 import numpy as np
 
@@ -43,9 +42,6 @@ def preprocess_vcf_for_pypgx(input_vcf: str, output_vcf: str) -> None:
 
     writer.close()
     vcf.close()
-
-    # Index the output VCF file with tabix
-    subprocess.run(["tabix", "-f", "-p", "vcf", output_vcf], check=True)
 
 
 def main() -> None:
