@@ -11,6 +11,13 @@ CANONICAL_CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,c
 if not config.get("input_vcf"):
     raise WorkflowError("Configuration error: 'input_vcf' is not specified in config.yaml.")
 
+# --- Intermediate Output Handling ---
+KEEP_INTERMEDIATE = config.get("keep_intermediate", False)
+
+def intermediate(path):
+    """Mark path as temp() unless keep_intermediate is set to True."""
+    return path if KEEP_INTERMEDIATE else temp(path)
+
 # --- Main Rules ---
 rule all:
     input: 
@@ -65,7 +72,7 @@ rule select_regions:
     input:
         vcf=config["input_vcf"],
         chr_map="results/temp/chr_map.txt"
-    output: vcf="results/temp/01_selected.vcf.gz"
+    output: vcf=intermediate("results/temp/01_selected.vcf.gz")
     threads: 4
     shell:
         """
@@ -82,7 +89,7 @@ rule select_regions:
 
 rule normalize_and_split:
     input: vcf="results/temp/01_selected.vcf.gz", ref="resources/hg38.fa"
-    output: vcf="results/temp/02_normalized.vcf.gz"
+    output: vcf=intermediate("results/temp/02_normalized.vcf.gz")
     threads: 4
     shell:
         """
@@ -107,8 +114,8 @@ rule annotate_raw_vcf:
         vcf="results/temp/02_normalized.vcf.gz", 
         groups="results/temp/groups_raw.txt"
     output: 
-        vcf="results/temp/03_raw_stats.vcf.gz",
-        tbi="results/temp/03_raw_stats.vcf.gz.tbi"
+        vcf=intermediate("results/temp/03_raw_stats.vcf.gz"),
+        tbi=intermediate("results/temp/03_raw_stats.vcf.gz.tbi")
     threads: 4
     shell:
         """
@@ -120,8 +127,8 @@ rule annotate_raw_vcf:
 rule genotype_masking:
     input: "results/temp/03_raw_stats.vcf.gz"
     output: 
-        vcf="results/temp/04_masked.vcf.gz",
-        tbi="results/temp/04_masked.vcf.gz.tbi"
+        vcf=intermediate("results/temp/04_masked.vcf.gz"),
+        tbi=intermediate("results/temp/04_masked.vcf.gz.tbi")
     threads: 4
     params:
         min_gq=config["qc_thresholds"]["min_gq"],
@@ -156,8 +163,8 @@ rule fix_ploidy:
         samples=config["sample_info"],
         ploidy=rules.generate_ploidy_rules.output.ploidy
     output: 
-        vcf="results/temp/05_ploidy_fixed.vcf.gz",
-        tbi="results/temp/05_ploidy_fixed.vcf.gz.tbi",
+        vcf=intermediate("results/temp/05_ploidy_fixed.vcf.gz"),
+        tbi=intermediate("results/temp/05_ploidy_fixed.vcf.gz.tbi"),
         sex_map="results/temp/sex_map.txt"
     threads: 4
     shell:
@@ -174,8 +181,8 @@ rule annotate_final_vcf:
         vcf="results/temp/05_ploidy_fixed.vcf.gz", 
         groups="results/temp/groups_final.txt"
     output: 
-        vcf="results/temp/06_final_stats.vcf.gz",
-        tbi="results/temp/06_final_stats.vcf.gz.tbi"
+        vcf=intermediate("results/temp/06_final_stats.vcf.gz"),
+        tbi=intermediate("results/temp/06_final_stats.vcf.gz.tbi")
     threads: 4
     shell:
         """

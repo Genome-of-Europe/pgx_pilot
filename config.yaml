@@ -14,6 +14,9 @@ target_genes: "resources/target_genes.txt" # List of gene symbols, one per line
 
 # --- Pipeline Settings ---
 output_prefix: "pgx_pilot" # Prefix for final VCF files
+# Set to false (default) to automatically remove intermediate VCFs once downstream
+# rules complete. Set to true to retain all intermediate VCF files.
+keep_intermediate: false
 
 # --- Quality Control Thresholds ---
 qc_thresholds:
