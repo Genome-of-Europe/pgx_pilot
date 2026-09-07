@@ -48,13 +48,6 @@ def tag_variant_qc(input_vcf, output_vcf, thresholds):
             if hwe_val is not None and hwe_val < thresholds['hwe']:
                 reasons.append("FAIL_HWE")
 
-        if 'MAF' in info:
-            maf_val = info['MAF']
-            if isinstance(maf_val, (list, tuple)):
-                maf_val = maf_val[0]
-            if maf_val is not None and maf_val < thresholds['maf']:
-                reasons.append("FAIL_MAF")
-
         if 'F_MISSING' in info:
             f_missing = info['F_MISSING']
             if isinstance(f_missing, (list, tuple)):
@@ -87,7 +80,6 @@ if __name__ == "__main__":
     parser.add_argument("--min_gq", type=int, default=20)
     parser.add_argument("--ab_ratio", type=float, default=0.2)
     parser.add_argument("--hwe", type=float, default=1e-6)
-    parser.add_argument("--maf", type=float, default=0.0)
     parser.add_argument("--max_missing", type=float, default=0.1)
     
     args = parser.parse_args()
@@ -102,7 +94,6 @@ if __name__ == "__main__":
         'min_gq': args.min_gq,
         'ab_ratio': args.ab_ratio,
         'hwe': args.hwe,
-        'maf': args.maf,
         'max_missing': args.max_missing
     }
     

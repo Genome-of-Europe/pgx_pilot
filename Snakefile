@@ -197,7 +197,6 @@ rule variant_qc_tagging:
         fs=config["qc_thresholds"]["fs"],
         readpos=config["qc_thresholds"]["readpos"],
         hwe=config["qc_thresholds"]["hwe"],
-        maf=config["qc_thresholds"]["maf"],
         max_missing=config["qc_thresholds"]["max_missing"],
         min_dp=config["qc_thresholds"]["min_dp"],
         min_gq=config["qc_thresholds"]["min_gq"],
@@ -211,7 +210,6 @@ rule variant_qc_tagging:
             --fs {params.fs} \
             --readpos {params.readpos} \
             --hwe {params.hwe} \
-            --maf {params.maf} \
             --max_missing {params.max_missing} \
             --min_dp {params.min_dp} \
             --min_gq {params.min_gq} \

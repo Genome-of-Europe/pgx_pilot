@@ -68,7 +68,6 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
     readpos_thresh = thresholds["readpos"]
     min_dp_thresh = thresholds["min_dp"]
     hwe_thresh = thresholds["hwe"]
-    maf_thresh = thresholds["maf"]
     max_missing_thresh = thresholds["max_missing"]
 
     for record in vcf_in:
@@ -103,10 +102,6 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
         if hwe is not None and hwe < hwe_thresh:
             reasons.append("FAIL_HWE")
 
-        maf = _extract_scalar(info.get("MAF"))
-        if maf is not None and maf < maf_thresh:
-            reasons.append("FAIL_MAF")
-
         f_missing = _extract_scalar(info.get("F_MISSING"))
         if f_missing is not None and f_missing > max_missing_thresh:
             reasons.append("FAIL_MISSING")
@@ -135,7 +130,6 @@ def main() -> None:
     parser.add_argument("--min_gq", type=int, default=20)
     parser.add_argument("--ab_ratio", type=float, default=0.2)
     parser.add_argument("--hwe", type=float, default=1e-6)
-    parser.add_argument("--maf", type=float, default=0.0)
     parser.add_argument("--max_missing", type=float, default=0.1)
 
     args = parser.parse_args()
@@ -150,7 +144,6 @@ def main() -> None:
         "min_gq": args.min_gq,
         "ab_ratio": args.ab_ratio,
         "hwe": args.hwe,
-        "maf": args.maf,
         "max_missing": args.max_missing,
     }
 

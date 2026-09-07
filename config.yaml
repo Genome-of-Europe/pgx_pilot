@@ -23,7 +23,6 @@ qc_thresholds:
   fs: 60.0
   readpos: -8.0
   hwe: 1e-6
-  maf: 0.01
   min_dp: 10
   min_gq: 20
   ab_ratio: 0.2
