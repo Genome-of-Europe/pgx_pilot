@@ -23,7 +23,7 @@ rule all:
     input: 
         expand("results/{prefix}.sites.all.vcf.gz", prefix=config.get("output_prefix", "cohort")),
         expand("results/{prefix}.sites.pass.vcf.gz", prefix=config.get("output_prefix", "cohort")),
-        expand("results/intermediate/{prefix}.full_sample_data.vcf.gz", prefix=config.get("output_prefix", "cohort"))
+        expand("results/{prefix}.full_sample_data.vcf.gz", prefix=config.get("output_prefix", "cohort"))
 
 # --- Resources & Common Steps ---
 rule prepare_reference:
@@ -194,8 +194,8 @@ rule annotate_final_vcf:
 rule variant_qc_tagging:
     input: "results/temp/06_final_stats.vcf.gz"
     output: 
-        vcf="results/intermediate/{prefix}.full_sample_data.vcf.gz",
-        tbi="results/intermediate/{prefix}.full_sample_data.vcf.gz.tbi"
+        vcf="results/{prefix}.full_sample_data.vcf.gz",
+        tbi="results/{prefix}.full_sample_data.vcf.gz.tbi"
     threads: 4
     params:
         qual=config["qc_thresholds"]["qual"],
@@ -225,7 +225,7 @@ rule variant_qc_tagging:
         """
 
 rule create_sites_vcf:
-    input: "results/intermediate/{prefix}.full_sample_data.vcf.gz"
+    input: "results/{prefix}.full_sample_data.vcf.gz"
     output:
         all_sites="results/{prefix}.sites.all.vcf.gz",
         all_sites_tbi="results/{prefix}.sites.all.vcf.gz.tbi",

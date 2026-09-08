@@ -31,3 +31,9 @@ work/
 
 # nextflow logs and cache
 .nextflow* 
+
+# Docs (kept locally, not committed)
+docs/
+
+# Superseded pysam-based QC script
+scripts/tag_variant_qc_pysam.py
