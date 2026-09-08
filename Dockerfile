@@ -1,5 +1,5 @@
-# Use a leaner, faster base with the mamba solver pre-configured
-FROM condaforge/mambaforge:latest
+# Use Miniforge as modern, maintained base with mamba pre-configured
+FROM condaforge/miniforge3:latest
 
 LABEL org.opencontainers.image.source=https://github.com/Genome-of-Europe/pgx_pilot
 
@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Set working directory early to organize the build context
 WORKDIR /pipeline
+
+# Pre-create directory scaffolding for runtime mounts
+RUN mkdir -p /pipeline/resources /pipeline/data /pipeline/results/temp
 
 # Copy ONLY the environment file first to leverage Docker layer caching
 COPY env.yml /tmp/env.yml

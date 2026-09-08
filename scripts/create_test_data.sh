@@ -108,9 +108,10 @@ rm -f "$BASE_DIR/samples.tsv" "$BASE_DIR/sample_list.txt"
 wget -q -O "$BASE_DIR/1kGP.3202_samples.pedigree_info.txt" "$PEDIGREE_URL"
 
 # Parse PED file:
-# Column 2: Sample ID
-# Column 5: Sex (1=Male, 2=Female) -> Convert to M/F/U
-awk 'NR>1 { if ($4==1) s="M"; else if ($4==2) s="F"; else s="U"; print $1"\t"s }' "$BASE_DIR/1kGP.3202_samples.pedigree_info.txt" | head -n "$NUM_SAMPLES" > "$BASE_DIR/samples.tsv"
+# Column 1: Sample ID
+# Column 4: Sex (1=Male, 2=Female) -> Convert to M/F/U
+# Column 3: Default country/population code to satisfy 3-column requirement
+awk 'NR>1 { if ($4==1) s="M"; else if ($4==2) s="F"; else s="U"; print $1"\t"s"\tEUR" }' "$BASE_DIR/1kGP.3202_samples.pedigree_info.txt" | head -n "$NUM_SAMPLES" > "$BASE_DIR/samples.tsv"
 cut -f1 "$BASE_DIR/samples.tsv" > "$BASE_DIR/sample_list.txt"
 echo "      Created metadata."
 

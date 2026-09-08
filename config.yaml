@@ -3,7 +3,6 @@
 
 # --- Input Data ---
 input_vcf: "data/raw_cohort.vcf.gz"
-country_code: "Unknown" # ISO 3166-1 alpha-2 code, used by Beacon pipeline
 sample_info: "data/samples.tsv" # Format: sample_id, sex (M/F), country_code (ISO 3166)
 
 # --- Reference Data Management ---
@@ -11,10 +10,13 @@ resources:
   ref_fasta_url: "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
 
 # --- Target Selection ---
-regions_bed: "resources/targets.bed"
+target_genes: "resources/target_genes.txt" # List of gene symbols, one per line
 
 # --- Pipeline Settings ---
 output_prefix: "pgx_pilot" # Prefix for final VCF files
+# Set to false (default) to automatically remove intermediate VCFs once downstream
+# rules complete. Set to true to retain all intermediate VCF files.
+keep_intermediate: false
 
 # --- Quality Control Thresholds ---
 qc_thresholds:
@@ -24,7 +26,6 @@ qc_thresholds:
   fs: 60.0
   readpos: -8.0
   hwe: 1e-6
-  maf: 0.01
   min_dp: 10
   min_gq: 20
   ab_ratio: 0.2

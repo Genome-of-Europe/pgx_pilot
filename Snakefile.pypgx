@@ -9,19 +9,12 @@ import csv
 # Load config
 configfile: "config.yaml"
 
-PYPGX_VERSION = "0.26.0"
+PYPGX_VERSION = "0.27.0"
 
 # Read genes from the BED file specified in the config
-bed_file_path = config["regions_bed"]
+bed_file_path = config["target_genes"]
 with open(bed_file_path) as f:
-    GENES = sorted(list(set([line.strip().split("\t")[3] for line in f if line.strip()])))
-
-# Read PyPGX supported genes
-with open("resources/pypgx_genes.txt") as f:
-    PYPGX_GENES = sorted(list(set([line.strip() for line in f])))
-
-# Remove unsupported genes
-GENES = [g for g in GENES if g in PYPGX_GENES]
+    GENES = sorted(list(set([line.strip() for line in f if line.strip()])))
 
 rule all:
     input:
@@ -32,8 +25,17 @@ rule all:
 rule download_bundle:
     output:
         directory("resources/pypgx-bundle")
+    params:
+        version=PYPGX_VERSION
     shell:
-        "git clone --branch {PYPGX_VERSION} --depth 1 https://github.com/sbslee/pypgx-bundle {output}"
+        """
+        if [ -d "{output}/.git" ]; then
+            cd {output} && git fetch --tags && git checkout {params.version}
+        else
+            rm -rf {output}
+            git clone --branch {params.version} --depth 1 https://github.com/sbslee/pypgx-bundle {output}
+        fi
+        """
 
 rule generate_groups:
     input: samples=config["sample_info"]
@@ -41,39 +43,62 @@ rule generate_groups:
     shell:
         "python scripts/generate_groups.py {input.samples} {output}"
 
-rule preprocess_vcf_for_pypgx:
+rule create_target_bed:
     input:
-        vcf=config["input_vcf"]
+        vcf=config["input_vcf"],
+        genes=config["target_genes"],
+        bundle=rules.download_bundle.output
+    output:
+        bed="results/temp/target_regions.bed"
+    run:
+        from cyvcf2 import VCF
+        import subprocess
+
+        vcf = VCF(str(input.vcf))
+        has_chr = any(seq.startswith("chr") for seq in vcf.seqnames)
+        vcf.close()
+
+        with open(str(input.genes)) as f:
+            genes = [line.strip() for line in f if line.strip()]
+
+        cmd = [
+            "pypgx", "create-regions-bed",
+            "--assembly", "GRCh38",
+            "--genes"
+        ] + genes
+
+        if has_chr:
+            cmd.append("--add-chr-prefix")
+
+        env = dict(os.environ, PYPGX_BUNDLE=str(input.bundle))
+        with open(str(output.bed), "w") as out_f:
+            subprocess.run(cmd, stdout=out_f, env=env, check=True)
+
+rule extract_target_genes:
+    input:
+        vcf=config["input_vcf"],
+        bed=rules.create_target_bed.output.bed
+    output:
+        vcf=temp("results/temp/target_genes_raw.vcf.gz")
+    threads: 2
+    shell:
+        "bcftools view --threads {threads} -R {input.bed} -O z -o {output.vcf} {input.vcf}"
+
+rule format_vcf_for_pypgx:
+    input:
+        vcf=rules.extract_target_genes.output.vcf
     output:
         vcf="results/temp/preprocessed_for_pypgx.vcf.gz",
         tbi="results/temp/preprocessed_for_pypgx.vcf.gz.tbi"
+    threads: 2
     shell:
         """
         # Workaround: PyPGX run-ngs-pipeline crashes on bcftools-normalized VCF files
         # when it encounters comma-separated missing values in the format fields 
-        # (e.g. AD=".,." for masked/missing genotypes). This awk step normalizes any
-        # sequence of dots/commas in the AD field to a single "." which PyPGX handles correctly.
-        bcftools view -O v {input.vcf} | \
-        awk 'BEGIN{{FS=OFS="\\t"}} 
-        /^#/ {{print; next}}
-        {{
-            split($$9, f, ":"); ad = 0;
-            for(i=1; i<=length(f); i++) if(f[i] == "AD") ad = i;
-            
-            if(ad){{
-                for(i=10; i<=NF; i++){{
-                    split($$i, s, ":");
-                    if(s[ad] ~ /^[.,]+$/) s[ad] = ".";
-                    
-                    x = s[1];
-                    for(j=2; j<=length(s); j++) x = x ":" s[j];
-                    $$i = x;
-                }}
-            }}
-            print;
-        }}' | bgzip -c > {output.vcf}
-        
-        tabix -p vcf {output.vcf}
+        # (e.g. AD=".,." for masked/missing genotypes). This cyvcf2 script normalizes any
+        # all-missing AD vector to a single "." using HTSlib vector-end encoding.
+        python scripts/preprocess_vcf_for_pypgx.py {input.vcf} {output.vcf}
+        bcftools index --threads {threads} -t {output.vcf}
         """
 
 rule run_pypgx:
@@ -117,14 +142,26 @@ rule calculate_stratified_af:
 rule merge_alleles:
     input: expand("results/pgx/af/{gene}_alleles.csv", gene=GENES)
     output: "results/pgx/merged_alleles.csv"
-    run: pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
+        pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
 
 rule merge_genotypes:
     input: expand("results/pgx/af/{gene}_genotypes.csv", gene=GENES)
     output: "results/pgx/merged_genotypes.csv"
-    run: pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
+        pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
 
 rule merge_phenotypes:
     input: expand("results/pgx/af/{gene}_phenotypes.csv", gene=GENES)
     output: "results/pgx/merged_phenotypes.csv"
-    run: pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
+        pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
