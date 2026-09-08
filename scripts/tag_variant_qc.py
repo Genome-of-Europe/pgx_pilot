@@ -23,7 +23,7 @@ def _extract_scalar(val: Any) -> Any:
     return val
 
 
-def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) -> None:
+def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any], threads: int, output_type: str) -> None:
     """Tag variant records with QC_STATUS info field based on thresholds.
 
     Parameters
@@ -35,7 +35,16 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
     thresholds : dict
         QC threshold dictionary with cutoffs.
     """
-    vcf_in = VCF(input_vcf)
+
+    in_threads = None
+    out_threads = None
+    if threads == 1:
+        in_threads = 1
+    elif threads > 1:
+        in_threads = 1
+        out_threads = threads - 1
+
+    vcf_in = VCF(input_vcf, threads=in_threads)
 
     if "QC_STATUS" not in vcf_in:
         vcf_in.add_info_to_header({
@@ -59,7 +68,7 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
                 "Description": desc,
             })
 
-    vcf_out = Writer(output_vcf, vcf_in)
+    vcf_out = Writer(output_vcf, vcf_in, mode="w"+output_type)
 
     qual_thresh = thresholds["qual"]
     qd_thresh = thresholds["qd"]
@@ -120,6 +129,9 @@ def main() -> None:
     parser.add_argument("input_vcf", help="Input VCF path")
     parser.add_argument("output_vcf", help="Output VCF path")
 
+    parser.add_argument("--threads", help="Input/Output compression threads.", type=int, default=0)
+    parser.add_argument("-O", "--output-type", help="bcftools compatible output-type flag.", default="z")
+
     parser.add_argument("--qual", type=float, default=30.0)
     parser.add_argument("--qd", type=float, default=2.0)
     parser.add_argument("--mq", type=float, default=40.0)
@@ -147,7 +159,7 @@ def main() -> None:
         "max_missing": args.max_missing,
     }
 
-    tag_variant_qc(args.input_vcf, args.output_vcf, thresholds)
+    tag_variant_qc(args.input_vcf, args.output_vcf, thresholds, args.threads, args.output_type)
 
 
 if __name__ == "__main__":

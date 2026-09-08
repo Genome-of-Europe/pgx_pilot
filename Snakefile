@@ -7,6 +7,15 @@ from snakemake.exceptions import WorkflowError
 
 CANONICAL_CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY,chrM"
 
+READ_THREADS=1
+WRITE_THREADS=2
+
+USE_READ_THREADS=f"--threads {READ_THREADS}"
+USE_WRITE_THREADS=f"--threads {WRITE_THREADS}"
+
+# WRITE_INDEX = "--write-index=tbi"
+WRITE_INDEX = ""
+
 # --- Config Validation ---
 if not config.get("input_vcf"):
     raise WorkflowError("Configuration error: 'input_vcf' is not specified in config.yaml.")
@@ -73,7 +82,7 @@ rule select_regions:
         vcf=config["input_vcf"],
         chr_map="results/temp/chr_map.txt"
     output: vcf=intermediate("results/temp/01_selected.vcf.gz")
-    threads: 4
+    threads: 2
     shell:
         """
         # If the map file is not empty, rename chromosomes first
@@ -82,8 +91,8 @@ rule select_regions:
             bcftools view --threads {threads} -t {CANONICAL_CHRS} -Ou | \
             bcftools view --threads {threads} -e 'ALT="*"' -O z -o {output.vcf}
         else
-            bcftools view --threads {threads} -t {CANONICAL_CHRS} {input.vcf} -Ou | \
-            bcftools view --threads {threads} -e 'ALT="*"' -O z -o {output.vcf}
+            bcftools view {USE_READ_THREADS} -t {CANONICAL_CHRS} {input.vcf} -Ou | \
+            bcftools view {USE_WRITE_THREADS} -t {CANONICAL_CHRS} -e 'ALT="*"' -Ob1 -o {output.vcf}
         fi
         """
 
@@ -93,9 +102,9 @@ rule normalize_and_split:
     threads: 4
     shell:
         """
-        bcftools norm --threads {threads} --force -m -any -f {input.ref} -Ou {input.vcf} | \
-        bcftools annotate --threads {threads} -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
-        bcftools norm --threads {threads} --rm-dup exact -Oz -o {output.vcf}
+        bcftools norm {USE_READ_THREADS} --force -m -any -f {input.ref} -Ou {input.vcf} | \
+        bcftools annotate  -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
+        bcftools norm {USE_WRITE_THREADS} --rm-dup exact -Ob1 -o {output.vcf}
         """
 
 
@@ -115,20 +124,20 @@ rule annotate_raw_vcf:
         groups="results/temp/groups_raw.txt"
     output: 
         vcf=intermediate("results/temp/03_raw_stats.vcf.gz"),
-        tbi=intermediate("results/temp/03_raw_stats.vcf.gz.tbi")
+        # tbi=intermediate("results/temp/03_raw_stats.vcf.gz.tbi")
     threads: 4
     shell:
         """
-        bcftools +fill-tags --threads {threads} {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
-        bcftools view --threads {threads} -O z -o {output.vcf}
-        bcftools index --threads {threads} -t {output.vcf}
+        # It's very interesting that piping is faster then one bcfplugin commands with --threads paramter
+        bcftools +fill-tags {USE_READ_THREADS} {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
+        bcftools view {USE_WRITE_THREADS} -Ob1 -o {output.vcf}  {WRITE_INDEX}
         """
 
 rule genotype_masking:
     input: "results/temp/03_raw_stats.vcf.gz"
     output: 
         vcf=intermediate("results/temp/04_masked.vcf.gz"),
-        tbi=intermediate("results/temp/04_masked.vcf.gz.tbi")
+        # tbi=intermediate("results/temp/04_masked.vcf.gz.tbi")
     threads: 4
     params:
         min_gq=config["qc_thresholds"]["min_gq"],
@@ -137,8 +146,11 @@ rule genotype_masking:
         max_ab = 1 - config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        bcftools +setGT --threads {threads} {input} -O z -o {output.vcf} -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
-        bcftools index --threads {threads} -t {output.vcf}
+        # It's very interesting that piping is faster then one bcfplugin commands with --threads paramter
+        # bcftools +setGT --threads {threads} {input} -Ob1 -o {output.vcf} --write-index=tbi -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))'
+        
+        bcftools +setGT {USE_READ_THREADS} {input}  -Ou -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))' | \
+        bcftools view {USE_WRITE_THREADS} -Ob1 -o {output.vcf}  {WRITE_INDEX}
         """
 
 rule generate_groups_final:
@@ -164,7 +176,7 @@ rule fix_ploidy:
         ploidy=rules.generate_ploidy_rules.output.ploidy
     output: 
         vcf=intermediate("results/temp/05_ploidy_fixed.vcf.gz"),
-        tbi=intermediate("results/temp/05_ploidy_fixed.vcf.gz.tbi"),
+        # tbi=intermediate("results/temp/05_ploidy_fixed.vcf.gz.tbi"),
         sex_map="results/temp/sex_map.txt"
     threads: 4
     shell:
@@ -172,8 +184,8 @@ rule fix_ploidy:
         # Cleanly generate the standardized sex map
         python scripts/generate_sex_map.py {input.samples} {output.sex_map}
         
-        bcftools +fixploidy --threads {threads} {input.vcf} -Oz -o {output.vcf} -- -s {output.sex_map} -p {input.ploidy}
-        bcftools index --threads {threads} -t {output.vcf}
+        bcftools +fixploidy {USE_READ_THREADS} {input.vcf} -Ou  -- -s {output.sex_map} -p {input.ploidy} | \
+        bcftools view {USE_WRITE_THREADS} -o {output.vcf} -Ob1 {WRITE_INDEX}
         """
 
 rule annotate_final_vcf:
@@ -182,20 +194,19 @@ rule annotate_final_vcf:
         groups="results/temp/groups_final.txt"
     output: 
         vcf=intermediate("results/temp/06_final_stats.vcf.gz"),
-        tbi=intermediate("results/temp/06_final_stats.vcf.gz.tbi")
+        # tbi=intermediate("results/temp/06_final_stats.vcf.gz.tbi")
     threads: 4
     shell:
         """
-        bcftools +fill-tags --threads {threads} {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
-        bcftools view --threads {threads} -O z -o {output.vcf}
-        bcftools index --threads {threads} -t {output.vcf}
+        bcftools +fill-tags {USE_READ_THREADS} {input.vcf} -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF,HWE,NS,F_MISSING,ExcHet | \
+        bcftools view {USE_WRITE_THREADS} -Ob1 -o {output.vcf} {WRITE_INDEX}
         """
 
 rule variant_qc_tagging:
     input: "results/temp/06_final_stats.vcf.gz"
     output: 
         vcf="results/intermediate/{prefix}.full_sample_data.vcf.gz",
-        tbi="results/intermediate/{prefix}.full_sample_data.vcf.gz.tbi"
+        # tbi="results/intermediate/{prefix}.full_sample_data.vcf.gz.tbi"
     threads: 4
     params:
         qual=config["qc_thresholds"]["qual"],
@@ -210,7 +221,8 @@ rule variant_qc_tagging:
         ab_ratio=config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        python scripts/tag_variant_qc.py {input} {output.vcf} \
+        python scripts/tag_variant_qc.py {input} /dev/stdout  \
+            -Ob0 --threads 1 \
             --qual {params.qual} \
             --qd {params.qd} \
             --mq {params.mq} \
@@ -220,8 +232,8 @@ rule variant_qc_tagging:
             --max_missing {params.max_missing} \
             --min_dp {params.min_dp} \
             --min_gq {params.min_gq} \
-            --ab_ratio {params.ab_ratio}
-        bcftools index --threads {threads} -t {output.vcf}
+            --ab_ratio {params.ab_ratio} | \
+        bcftools view -Ob1 -o {output.vcf} {USE_WRITE_THREADS} 
         """
 
 rule create_sites_vcf:
@@ -234,10 +246,13 @@ rule create_sites_vcf:
     threads: 4
     shell:
         """
-        bcftools view --threads {threads} -G -O z -o {output.all_sites} {input}
-        bcftools index --threads {threads} -t {output.all_sites}
+        # bcftools view --threads {threads} -G -O z -o {output.all_sites} {input} --write-index=tbi
+        # 
+        # # Filter for PASS status.
+        # bcftools view --threads {threads} -G -i 'INFO/QC_STATUS="PASS"' {input} -O z -o {output.pass_sites} --write-index=tbi
         
-        # Filter for PASS status.
-        bcftools view --threads {threads} -G -i 'INFO/QC_STATUS="PASS"' {input} -O z -o {output.pass_sites}
-        bcftools index --threads {threads} -t {output.pass_sites}
+        bcftools view --threads 2 -G -Ou {input} | \
+        tee >(bcftools view - -O z6 -o {output.all_sites} --write-index=tbi --threads {threads}) \
+            >(bcftools view - -i 'INFO/QC_STATUS="PASS"' -O z6 -o {output.pass_sites} --write-index=tbi --threads {threads}) \
+        > /dev/null
         """
