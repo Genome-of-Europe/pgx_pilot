@@ -9,7 +9,7 @@ import csv
 # Load config
 configfile: "config.yaml"
 
-PYPGX_VERSION = "0.26.0"
+PYPGX_VERSION = "0.27.0"
 
 # Read genes from the BED file specified in the config
 bed_file_path = config["target_genes"]
