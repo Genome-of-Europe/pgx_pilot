@@ -28,7 +28,14 @@ rule download_bundle:
     params:
         version=PYPGX_VERSION
     shell:
-        "git clone --branch {params.version} --depth 1 https://github.com/sbslee/pypgx-bundle {output}"
+        """
+        if [ -d "{output}/.git" ]; then
+            cd {output} && git fetch --tags && git checkout {params.version}
+        else
+            rm -rf {output}
+            git clone --branch {params.version} --depth 1 https://github.com/sbslee/pypgx-bundle {output}
+        fi
+        """
 
 rule generate_groups:
     input: samples=config["sample_info"]
