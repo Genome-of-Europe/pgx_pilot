@@ -149,25 +149,11 @@ rule generate_groups_final:
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
 
-rule generate_ploidy_rules:
-    output:
-        ploidy="results/temp/ploidy_rules.txt"
-    shell:
-        # Node: Using bcftools call --ploidy is prone to human error.
-        #       It outputs on stderr and exit code ($?) is 255
-        #       Wrong invocation generates invalid files and exit code is again 255
-        #       bcftools +fixploidy accepts empty and even corrupt files making these errors silent.
-        # TODO: It's better to pregenerate these files or maybe hard code them in the repository it self.
-        """
-        bcftools call --ploidy GRCh38? 2> {output.ploidy} \
-        || true # due to snakemake strict mode we have to return true (hide 255 exit code)
-        """
-
 rule fix_ploidy:
     input: 
         vcf="results/temp/04_masked.vcf.gz",
         samples=config["sample_info"],
-        ploidy=rules.generate_ploidy_rules.output.ploidy
+        ploidy="resources/ploidy_rules.txt"
     output: 
         vcf=intermediate("results/temp/05_ploidy_fixed.vcf.gz"),
         tbi=intermediate("results/temp/05_ploidy_fixed.vcf.gz.tbi"),
