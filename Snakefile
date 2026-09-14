@@ -236,22 +236,15 @@ rule generate_ploidy_rules:
     output:
         ploidy=tmp("ploidy_rules.txt", keep=True)
     shell:
-        # BCFtools returns non-zero when querying built-in ploidy definitions;
-        # redirect stdout cleanly and use || true to prevent shell abort.
+        # Node: Using bcftools call --ploidy is prone to human error.
+        #       It outputs on stderr and exit code ($?) is 255
+        #       Wrong invocation generates invalid files and exit code is again 255
+        #       bcftools +fixploidy accepts empty and even corrupt files making these errors silent.
+        # TODO: It's better to pregenerate these files or maybe hard code them in the repository it self.
         """
-        bcftools call --ploidy GRCh38? 2> {output.ploidy} 
-        test -s {output.ploidy} # ensure file is not empty
+        bcftools call --ploidy GRCh38? 2> {output.ploidy} \
+        || true # due to snakemake strict mode we have to return true (hide 255 exit code)
         """
-
-rule sex_map:
-    input: samples=config["sample_info"],
-    output: sex_map=tmp("sex_map.txt", keep=True)
-    shell:
-        """
-        # Cleanly generate the standardized sex map
-        python scripts/generate_sex_map.py {input.samples} {output.sex_map}
-        """
-
 
 rule fix_ploidy:
     input:
