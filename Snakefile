@@ -111,7 +111,7 @@ PREFIX = config.get("output_prefix", "cohort")
 
 all_sites_path = expand("results/{prefix}.sites.all." + OUT_EXT, prefix=PREFIX)
 pass_sites_path = expand("results/{prefix}.sites.pass."+OUT_EXT, prefix = PREFIX)
-full_sample_data_path = expand("results/intermediate/{prefix}.full_sample_data."+TMP_EXT, prefix = PREFIX)
+full_sample_data_path = expand("results/{prefix}.full_sample_data."+OUT_EXT, prefix = PREFIX)
 
 rule all:
     input: all_sites_path, pass_sites_path, full_sample_data_path
@@ -299,7 +299,7 @@ if not USE_STREAM:
                 --min_dp {params.min_dp} \
                 --min_gq {params.min_gq} \
                 --ab_ratio {params.ab_ratio}  |
-            bcftools view {F_WRITE_THREADS} -O{TMP_O} -o {output.vcf} --write-index
+            bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index
         """)
 
 
@@ -389,7 +389,7 @@ else:
                 --min_dp {params.min_dp} \
                 --min_gq {params.min_gq} \
                 --ab_ratio {params.ab_ratio}  |
-            tee >(bcftools view {F_WRITE_THREADS} -O{TMP_O} -o {output.vcf} --write-index) |
+            tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index) |
                 
             # create sites vcf
             bcftools view -G -Ou |
