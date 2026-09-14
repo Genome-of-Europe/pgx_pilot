@@ -13,6 +13,20 @@ INPUT_VCF = config.get("input_vcf")
 if not INPUT_VCF:
     raise WorkflowError("Configuration error: 'input_vcf' is not specified in config.yaml.")
 
+QC = config["qc_thresholds"]
+QC_TAG_PARAMS = {
+    "qual": QC["qual"],
+    "qd": QC["qd"],
+    "mq": QC["mq"],
+    "fs": QC["fs"],
+    "readpos": QC["readpos"],
+    "hwe": QC["hwe"],
+    "max_missing": QC["max_missing"],
+    "min_dp": QC["min_dp"],
+    "min_gq": QC["min_gq"],
+    "ab_ratio": QC["ab_ratio"],
+}
+
 # Test: chr1 5 samples from 1kGP (INFO original)
 # Org:  2m 4s
 # New:  46.5s
@@ -32,7 +46,6 @@ USE_STREAM = config.get("use_stream", False)
 # --- Regions ---
 
 REGIONS = config.get("regions", "")
-
 F_REGIONS = "" if not REGIONS else f"-r {REGIONS}"
 
 # --- Compression/Decompression threads ---
@@ -59,11 +72,28 @@ KEEP_INTERMEDIATE = config.get("keep_intermediate", False)
 INDEX_TMP_FILES = config.get("index_tmp_files", False)
 F_WRITE_TMP_INDEX ="--write-index" if KEEP_INTERMEDIATE and INDEX_TMP_FILES else ""
 
-def intermediate(path):
-    """Mark path as temp() unless keep_intermediate is set to True."""
-    if not KEEP_INTERMEDIATE:
-        path=temp(path)
-    return path
+
+# --- Global paths functions ---
+
+def resource(name: str) -> str:
+    return f"resources/{name}"
+
+TEMP_DIR = "results/temp"
+
+def tmp(name, keep=KEEP_INTERMEDIATE) -> str:
+    path = f"{TEMP_DIR}/{name}"
+    return path if keep else temp(path)
+
+def tmp_vcf(step, keep=KEEP_INTERMEDIATE) -> str:
+    return tmp(f"{step}.{TMP_EXT}", keep=keep)
+
+from textwrap import dedent
+
+def log_path(name):
+    return f"results/logs/{name}.log"
+
+def add_log(cmd):
+    return f"(\n{dedent(cmd).strip()}\n) 2>&1 | tee {{log}}"
 
 # --- Global bash functions ---
 
@@ -89,8 +119,10 @@ rule all:
 
 # --- Resources & Common Steps ---
 rule prepare_reference:
-    input: src=lambda w: config.get("local_resources", {}).get("ref_fasta") or "resources/downloaded_hg38.fa.gz"
-    output: fasta="resources/hg38.fa", fai="resources/hg38.fa.fai"
+    input: src=lambda w: config.get("local_resources", {}).get("ref_fasta") or resource("downloaded_hg38.fa.gz")
+    output:
+        fasta=resource("hg38.fa"),
+        fai=resource("hg38.fa.fai"),
     shell:
         """
         if [[ "{input.src}" == *.gz ]]; then 
@@ -102,13 +134,13 @@ rule prepare_reference:
         """
 
 rule download_reference_source:
-    output: "resources/downloaded_hg38.fa.gz"
+    output: resource("downloaded_hg38.fa.gz")
     params: url=config["resources"]["ref_fasta_url"]
     shell: "wget --tries=3 -O {output} {params.url}"
 
 rule generate_chr_rename:
     input: INPUT_VCF
-    output: "results/temp/chr_rename_map.txt"
+    output: tmp("chr_rename_map.txt", keep=True)
     shell:
         "python scripts/chr_rename_map.py {input} {output}"
 
@@ -116,10 +148,11 @@ rule generate_chr_rename:
 rule select_regions:
     input:
         vcf=INPUT_VCF,
-        chr_rename_map="results/temp/chr_rename_map.txt"
-    output: vcf=intermediate("results/temp/01_selected." + TMP_EXT)
-    shell:
-        """
+        chr_rename_map=tmp("chr_rename_map.txt", keep=True)
+    output: vcf=tmp_vcf("01_selected")
+    log:
+        log_path("01_selected")
+    shell: add_log("""
         bcftools view {F_READ_THREADS} {F_REGIONS} {input.vcf} -Ou |
         {{
             # If the map file is not empty, rename chromosomes
@@ -132,18 +165,21 @@ rule select_regions:
         }} |
         bcftools view -t {CANONICAL_CHRS} -e 'ALT="*"' -Ou |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 rule normalize_and_split:
-    input: vcf="results/temp/01_selected." + TMP_EXT, ref="resources/hg38.fa"
-    output: vcf=intermediate("results/temp/02_normalized." + TMP_EXT)
-    shell:
-        """
+    input:
+        vcf=tmp_vcf("01_selected"),
+        ref=resource("hg38.fa")
+    output: vcf=tmp_vcf("02_normalized")
+    log:
+        log_path("02_normalized")
+    shell: add_log("""
         bcftools norm {F_READ_THREADS} --force -m -any -f {input.ref} -Ou {input.vcf} | 
         bcftools annotate  -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | 
         bcftools norm --rm-dup exact -Ou | 
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 
 # --- QC Workflow ---
@@ -151,52 +187,54 @@ rule normalize_and_split:
 rule generate_groups_raw:
     input: samples=config["sample_info"]
     output:
-        groups="results/temp/groups_raw.txt"
+        groups=tmp("groups_raw.txt", keep=True)
     params: suffix="raw"
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups} --suffix {params.suffix}"
 
 rule annotate_raw_vcf:
     input:
-        vcf="results/temp/02_normalized." + TMP_EXT,
-        groups="results/temp/groups_raw.txt"
+        vcf=tmp_vcf("02_normalized"),
+        groups=tmp("groups_raw.txt", keep=True)
     output:
-        vcf=intermediate("results/temp/03_raw_stats." + TMP_EXT),
-    shell:
-        """
+        vcf=tmp_vcf("03_raw_stats"),
+    log:
+        log_path("03_raw_stats")
+    shell: add_log("""
         bcftools view  {F_READ_THREADS} {input.vcf} -Ou |
         bcftools +fill-tags -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF | 
         # Note: it's faster to split the calculation between two commands
         bcftools +fill-tags -Ou -- -S {input.groups} -t HWE,NS,F_MISSING,ExcHet | 
         write_tmp_vcf {output.vcf} 
-        """
+    """)
 
 rule genotype_masking:
-    input: "results/temp/03_raw_stats." + TMP_EXT
+    input: tmp_vcf("03_raw_stats")
     output:
-        vcf=intermediate("results/temp/04_masked." + TMP_EXT),
+        vcf=tmp_vcf("04_masked"),
+    log:
+        log_path("04_masked")
     params:
-        min_gq=config["qc_thresholds"]["min_gq"],
-        min_dp=config["qc_thresholds"]["min_dp"],
-        min_ab=config["qc_thresholds"]["ab_ratio"],
-        max_ab = 1 - config["qc_thresholds"]["ab_ratio"]
-    shell:
-        """
+        min_gq=QC["min_gq"],
+        min_dp=QC["min_dp"],
+        min_ab=QC["ab_ratio"],
+        max_ab=1 - QC["ab_ratio"]
+    shell: add_log("""
         bcftools +setGT {F_READ_THREADS} {input}  -Ou -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))' |
         write_tmp_vcf {output.vcf} 
-        """
+    """)
 
 rule generate_groups_final:
     input: samples=config["sample_info"]
     output:
-        groups="results/temp/groups_final.txt"
+        groups=tmp("groups_final.txt", keep=True)
     params: suffix=""
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
 
 rule generate_ploidy_rules:
     output:
-        ploidy="results/temp/ploidy_rules.txt"
+        ploidy=tmp("ploidy_rules.txt", keep=True)
     shell:
         # BCFtools returns non-zero when querying built-in ploidy definitions;
         # redirect stdout cleanly and use || true to prevent shell abort.
@@ -207,54 +245,49 @@ rule generate_ploidy_rules:
 
 rule sex_map:
     input: samples=config["sample_info"],
-    output: sex_map="results/temp/sex_map.txt"
+    output: sex_map=tmp("sex_map.txt", keep=True)
     shell:
         """
         # Cleanly generate the standardized sex map
         python scripts/generate_sex_map.py {input.samples} {output.sex_map}
         """
 
+
 rule fix_ploidy:
     input:
-        vcf="results/temp/04_masked." + TMP_EXT,
+        vcf=tmp_vcf("04_masked"),
         samples=config["sample_info"],
-        ploidy="results/temp/ploidy_rules.txt",
-        sex_map="results/temp/sex_map.txt",
+        ploidy=tmp("ploidy_rules.txt", keep=True),
+        sex_map=tmp("sex_map.txt", keep=True),
     output:
-        vcf=intermediate("results/temp/05_ploidy_fixed." + TMP_EXT),
-    shell:
-        """
+        vcf=tmp_vcf("05_ploidy_fixed"),
+    log:
+        log_path("05_ploidy_fixed")
+    shell: add_log("""
         bcftools +fixploidy {F_READ_THREADS} {input.vcf} -Ou  -- -s {input.sex_map} -p {input.ploidy} |
         write_tmp_vcf {output.vcf} 
-        """
+    """)
 
 use rule annotate_raw_vcf as annotate_final_vcf with:
     input:
-        vcf="results/temp/05_ploidy_fixed." + TMP_EXT,
-        groups="results/temp/groups_final.txt"
+        vcf=tmp_vcf("05_ploidy_fixed"),
+        groups=tmp("groups_final.txt", keep=True)
     output:
-        vcf=intermediate("results/temp/06_final_stats." + TMP_EXT),
+        vcf=tmp_vcf("06_final_stats"),
+    log:
+        log_path("06_final_stats")
 
 if not USE_STREAM:
 
     rule variant_qc_tagging:
-        input: "results/temp/06_final_stats." + TMP_EXT
+        input: tmp_vcf("06_final_stats")
         output:
             vcf=full_sample_data_path
+        log:
+            expand(log_path("{prefix}_07_variant_qc_tagging"), prefix=PREFIX),
         params:
-            qual=config["qc_thresholds"]["qual"],
-            qd=config["qc_thresholds"]["qd"],
-            mq=config["qc_thresholds"]["mq"],
-            fs=config["qc_thresholds"]["fs"],
-            readpos=config["qc_thresholds"]["readpos"],
-            hwe=config["qc_thresholds"]["hwe"],
-            max_missing=config["qc_thresholds"]["max_missing"],
-            min_dp=config["qc_thresholds"]["min_dp"],
-            min_gq=config["qc_thresholds"]["min_gq"],
-            ab_ratio=config["qc_thresholds"]["ab_ratio"]
-        shell:
-            """
-            set -x #echo on
+            **QC_TAG_PARAMS
+        shell: add_log("""
             python scripts/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou  \
                 --qual {params.qual} \
                 --qd {params.qd} \
@@ -267,7 +300,7 @@ if not USE_STREAM:
                 --min_gq {params.min_gq} \
                 --ab_ratio {params.ab_ratio}  |
             bcftools view {F_WRITE_THREADS} -O{TMP_O} -o {output.vcf} --write-index
-            """
+        """)
 
 
     rule create_sites_vcf:
@@ -276,54 +309,41 @@ if not USE_STREAM:
         output:
             all_sites=all_sites_path,
             pass_sites=pass_sites_path,
-        shell:
-            """
+        log:
+            expand(log_path("{prefix}_08_sites"), prefix=PREFIX),
+        shell: add_log("""
             bcftools view {F_READ_THREADS} {input.in_vcf} -G -Ou |
             tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.all_sites} --write-index) |
             bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.pass_sites} -i 'INFO/QC_STATUS="PASS"' --write-index
-            """
+        """)
 
 else:
 
     rule stream_pipeline:
         input:
             vcf=INPUT_VCF,
-            chr_rename_map="results/temp/chr_rename_map.txt",
-            ref="resources/hg38.fa",
-            groups_raw="results/temp/groups_raw.txt",
-            groups_final="results/temp/groups_final.txt",
             samples=config["sample_info"],
-            ploidy="results/temp/ploidy_rules.txt",
-            sex_map="results/temp/sex_map.txt",
+            ref=resource("hg38.fa"),
+            chr_rename_map=tmp("chr_rename_map.txt", keep=True),
+            groups_raw=tmp("groups_raw.txt", keep=True),
+            groups_final=tmp("groups_final.txt", keep=True),
+            ploidy=tmp("ploidy_rules.txt", keep=True),
+            sex_map=tmp("sex_map.txt", keep=True),
         output:
             all_sites=all_sites_path,
             pass_sites=pass_sites_path,
             vcf=full_sample_data_path,
         log:
-            expand("results/logs/{prefix}_stream.log", prefix=PREFIX),
+            expand(log_path("{prefix}_stream"), prefix=PREFIX),
         params:
             # rule select_regions:
-            chr_rename_map="results/temp/chr_rename_map.txt",
-
-            # rule normalize and split
-            min_gq=config["qc_thresholds"]["min_gq"],
-            min_dp=config["qc_thresholds"]["min_dp"],
-            min_ab=config["qc_thresholds"]["ab_ratio"],
-            max_ab=1-config["qc_thresholds"]["ab_ratio"],
-
-            # rule qc
-            qual=config["qc_thresholds"]["qual"],
-            qd=config["qc_thresholds"]["qd"],
-            mq=config["qc_thresholds"]["mq"],
-            fs=config["qc_thresholds"]["fs"],
-            readpos=config["qc_thresholds"]["readpos"],
-            hwe=config["qc_thresholds"]["hwe"],
-            max_missing=config["qc_thresholds"]["max_missing"],
-            # min_dp=config["qc_thresholds"]["min_dp"],
-            # min_gq=config["qc_thresholds"]["min_gq"],
-            ab_ratio=config["qc_thresholds"]["ab_ratio"],
-        shell:
-            """(
+            chr_rename_map=tmp("chr_rename_map.txt", keep=True),
+            # QC parameters
+            **QC_TAG_PARAMS,
+            # rule normalize and split specific QC
+            min_ab=QC["ab_ratio"],
+            max_ab=1 - QC["ab_ratio"],
+        shell: add_log("""
             # select_regions
             bcftools view {F_READ_THREADS} {F_REGIONS} {input.vcf} -Ou | 
             {{
@@ -375,5 +395,11 @@ else:
             bcftools view -G -Ou |
             tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.all_sites} --write-index) |
             bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.pass_sites} -i 'INFO/QC_STATUS="PASS"' --write-index
-            
-            ) 2>&1 | tee {log}"""
+        """)
+
+onsuccess:
+    # Cleanup empty logs
+    from pathlib import Path
+    for f in Path("results/logs").glob("*.log"):
+        if f.is_file() and f.stat().st_size == 0:
+            f.unlink()
