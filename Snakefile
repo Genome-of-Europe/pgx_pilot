@@ -1,5 +1,6 @@
 #ftype: python
 from utils.vcf import vcf_format_from_output_type
+from textwrap import dedent
 
 configfile: "config.yaml"
 
@@ -80,14 +81,14 @@ def resource(name: str) -> str:
 
 TEMP_DIR = "results/temp"
 
-def tmp(name, keep=KEEP_INTERMEDIATE) -> str:
-    path = f"{TEMP_DIR}/{name}"
+def tmp(name) -> str:
+    return f"{TEMP_DIR}/{name}"
+
+def tmp_vcf(name) -> str:
+    return tmp(f"{name}.{TMP_EXT}")
+
+def intermediate(path, keep: bool | None = KEEP_INTERMEDIATE) -> str:
     return path if keep else temp(path)
-
-def tmp_vcf(step, keep=KEEP_INTERMEDIATE) -> str:
-    return tmp(f"{step}.{TMP_EXT}", keep=keep)
-
-from textwrap import dedent
 
 def log_path(name):
     return f"results/logs/{name}.log"
@@ -140,7 +141,7 @@ rule download_reference_source:
 
 rule generate_chr_rename:
     input: INPUT_VCF
-    output: tmp("chr_rename_map.txt", keep=True)
+    output: tmp("chr_rename_map.txt")
     shell:
         "python scripts/chr_rename_map.py {input} {output}"
 
@@ -148,8 +149,8 @@ rule generate_chr_rename:
 rule select_regions:
     input:
         vcf=INPUT_VCF,
-        chr_rename_map=tmp("chr_rename_map.txt", keep=True)
-    output: vcf=tmp_vcf("01_selected")
+        chr_rename_map=tmp("chr_rename_map.txt")
+    output: vcf=intermediate(tmp_vcf("01_selected"))
     log:
         log_path("01_selected")
     shell: add_log("""
@@ -171,7 +172,7 @@ rule normalize_and_split:
     input:
         vcf=tmp_vcf("01_selected"),
         ref=resource("hg38.fa")
-    output: vcf=tmp_vcf("02_normalized")
+    output: vcf=intermediate(tmp_vcf("02_normalized"))
     log:
         log_path("02_normalized")
     shell: add_log("""
@@ -187,7 +188,7 @@ rule normalize_and_split:
 rule generate_groups_raw:
     input: samples=config["sample_info"]
     output:
-        groups=tmp("groups_raw.txt", keep=True)
+        groups=tmp("groups_raw.txt")
     params: suffix="raw"
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups} --suffix {params.suffix}"
@@ -195,9 +196,9 @@ rule generate_groups_raw:
 rule annotate_raw_vcf:
     input:
         vcf=tmp_vcf("02_normalized"),
-        groups=tmp("groups_raw.txt", keep=True)
+        groups=tmp("groups_raw.txt")
     output:
-        vcf=tmp_vcf("03_raw_stats"),
+        vcf=intermediate(tmp_vcf("03_raw_stats")),
     log:
         log_path("03_raw_stats")
     shell: add_log("""
@@ -211,7 +212,7 @@ rule annotate_raw_vcf:
 rule genotype_masking:
     input: tmp_vcf("03_raw_stats")
     output:
-        vcf=tmp_vcf("04_masked"),
+        vcf=intermediate(tmp_vcf("04_masked")),
     log:
         log_path("04_masked")
     params:
@@ -227,7 +228,7 @@ rule genotype_masking:
 rule generate_groups_final:
     input: samples=config["sample_info"]
     output:
-        groups=tmp("groups_final.txt", keep=True)
+        groups=tmp("groups_final.txt")
     params: suffix=""
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
@@ -235,7 +236,7 @@ rule generate_groups_final:
 
 rule sex_map:
     input: samples=config["sample_info"],
-    output: sex_map=tmp("sex_map.txt", keep=True)
+    output: sex_map=tmp("sex_map.txt")
     shell:
         """
         # Cleanly generate the standardized sex map
@@ -249,7 +250,7 @@ rule fix_ploidy:
         ploidy=resource("ploidy_rules.txt"),
         sex_map=tmp("sex_map.txt"),
     output:
-        vcf=tmp_vcf("05_ploidy_fixed"),
+        vcf=intermediate(tmp_vcf("05_ploidy_fixed")),
     log:
         log_path("05_ploidy_fixed")
     shell: add_log("""
@@ -260,9 +261,9 @@ rule fix_ploidy:
 use rule annotate_raw_vcf as annotate_final_vcf with:
     input:
         vcf=tmp_vcf("05_ploidy_fixed"),
-        groups=tmp("groups_final.txt", keep=True)
+        groups=tmp("groups_final.txt")
     output:
-        vcf=tmp_vcf("06_final_stats"),
+        vcf=intermediate(tmp_vcf("06_final_stats")),
     log:
         log_path("06_final_stats")
 
@@ -313,11 +314,11 @@ else:
             vcf=INPUT_VCF,
             samples=config["sample_info"],
             ref=resource("hg38.fa"),
-            chr_rename_map=tmp("chr_rename_map.txt", keep=True),
-            groups_raw=tmp("groups_raw.txt", keep=True),
-            groups_final=tmp("groups_final.txt", keep=True),
-            ploidy=tmp("ploidy_rules.txt", keep=True),
-            sex_map=tmp("sex_map.txt", keep=True),
+            chr_rename_map=tmp("chr_rename_map.txt"),
+            groups_raw=tmp("groups_raw.txt"),
+            groups_final=tmp("groups_final.txt"),
+            ploidy=tmp("ploidy_rules.txt"),
+            sex_map=tmp("sex_map.txt"),
         output:
             all_sites=all_sites_path,
             pass_sites=pass_sites_path,
@@ -325,8 +326,6 @@ else:
         log:
             expand(log_path("{prefix}_stream"), prefix=PREFIX),
         params:
-            # rule select_regions:
-            chr_rename_map=tmp("chr_rename_map.txt", keep=True),
             # QC parameters
             **QC_TAG_PARAMS,
             # rule normalize and split specific QC
