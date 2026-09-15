@@ -13,6 +13,7 @@ resources/
 !resources/targets.bed
 !resources/pypgx_genes.txt
 !resources/target_genes.txt
+!resources/ploidy_rules.txt
 
 # Data
 data/*

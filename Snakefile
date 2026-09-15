@@ -232,26 +232,22 @@ rule generate_groups_final:
     shell:
         "python scripts/generate_groups.py {input.samples} {output.groups}"
 
-rule generate_ploidy_rules:
-    output:
-        ploidy=tmp("ploidy_rules.txt", keep=True)
+
+rule sex_map:
+    input: samples=config["sample_info"],
+    output: sex_map=tmp("sex_map.txt", keep=True)
     shell:
-        # Node: Using bcftools call --ploidy is prone to human error.
-        #       It outputs on stderr and exit code ($?) is 255
-        #       Wrong invocation generates invalid files and exit code is again 255
-        #       bcftools +fixploidy accepts empty and even corrupt files making these errors silent.
-        # TODO: It's better to pregenerate these files or maybe hard code them in the repository it self.
         """
-        bcftools call --ploidy GRCh38? 2> {output.ploidy} \
-        || true # due to snakemake strict mode we have to return true (hide 255 exit code)
+        # Cleanly generate the standardized sex map
+        python scripts/generate_sex_map.py {input.samples} {output.sex_map}
         """
 
 rule fix_ploidy:
     input:
         vcf=tmp_vcf("04_masked"),
         samples=config["sample_info"],
-        ploidy=tmp("ploidy_rules.txt", keep=True),
-        sex_map=tmp("sex_map.txt", keep=True),
+        ploidy=resource("ploidy_rules.txt"),
+        sex_map=tmp("sex_map.txt"),
     output:
         vcf=tmp_vcf("05_ploidy_fixed"),
     log:
