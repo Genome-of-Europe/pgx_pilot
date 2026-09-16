@@ -98,7 +98,6 @@ def modify_vcf_header(vcf: VCF) -> None:
     command_args=" ".join(shlex.quote(arg) for arg in sys.argv)
     vcf.add_to_header(f"##commandline={command_args}")
 
-    # TODO: we should use official FILTER
     if "QC_STATUS" not in vcf:
         vcf.add_info_to_header({
             "ID":"QC_STATUS",

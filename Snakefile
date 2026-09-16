@@ -28,21 +28,8 @@ QC_TAG_PARAMS = {
     "ab_ratio": QC["ab_ratio"],
 }
 
-# Test: chr1 5 samples from 1kGP (INFO original)
-# Org:  2m 4s
-# New:  46.5s
-# Stream: 16.4s
-#  - sex group only annotations ~ 9s
-#  - no annotations: 7.6s
 USE_STREAM = config.get("use_stream", False)
 # USE_STREAM = True
-
-# Test: first 10K chr1 variants on 3202 samples of 1kGP (INFO cleaned)
-# Org:  49.4s
-# New:  17.8s
-# Stream: 7.3
-#  - sex group only annotations 4.7s
-#  - no annotation: 3.05s
 
 # --- Regions ---
 
@@ -75,11 +62,14 @@ F_WRITE_TMP_INDEX ="--write-index" if KEEP_INTERMEDIATE and INDEX_TMP_FILES else
 
 
 # --- Global paths functions ---
+RESULTS_DIR = config.get("results_dir", "results")
+TEMP_DIR = f"{RESULTS_DIR}/temp"
+
+SCRIPTS_DIR = f"{workflow.basedir}/scripts"
 
 def resource(name: str) -> str:
     return f"resources/{name}"
 
-TEMP_DIR = "results/temp"
 
 def tmp(name) -> str:
     return f"{TEMP_DIR}/{name}"
@@ -87,11 +77,11 @@ def tmp(name) -> str:
 def tmp_vcf(name) -> str:
     return tmp(f"{name}.{TMP_EXT}")
 
-def intermediate(path, keep: bool | None = KEEP_INTERMEDIATE) -> str:
+def intermediate(path, keep: bool = KEEP_INTERMEDIATE) -> str:
     return path if keep else temp(path)
 
 def log_path(name):
-    return f"results/logs/{name}.log"
+    return f"{RESULTS_DIR}/logs/{name}.log"
 
 def add_log(cmd):
     return f"(\n{dedent(cmd).strip()}\n) 2>&1 | tee {{log}}"
@@ -110,9 +100,9 @@ shell.prefix(
 
 PREFIX = config.get("output_prefix", "cohort")
 
-all_sites_path = expand("results/{prefix}.sites.all." + OUT_EXT, prefix=PREFIX)
-pass_sites_path = expand("results/{prefix}.sites.pass."+OUT_EXT, prefix = PREFIX)
-full_sample_data_path = expand("results/{prefix}.full_sample_data."+OUT_EXT, prefix = PREFIX)
+all_sites_path = expand(RESULTS_DIR +"/{prefix}.sites.all." + OUT_EXT, prefix=PREFIX)
+pass_sites_path = expand(RESULTS_DIR +"/{prefix}.sites.pass."+OUT_EXT, prefix = PREFIX)
+full_sample_data_path = expand(RESULTS_DIR +"/{prefix}.full_sample_data."+OUT_EXT, prefix = PREFIX)
 
 rule all:
     input: all_sites_path, pass_sites_path, full_sample_data_path
@@ -131,7 +121,12 @@ rule prepare_reference:
         else 
             ln -sf $(realpath "{input.src}") {output.fasta}
         fi
-        samtools faidx {output.fasta}
+        
+        # Index only if the FASTA is newer than the index (or if index is missing)
+        if [[ "{output.fasta}" -nt "{output.fai}" ]]; then
+            echo "Indexing {output.fasta}..."
+            samtools faidx {output.fasta}
+        fi
         """
 
 rule download_reference_source:
@@ -143,7 +138,7 @@ rule generate_chr_rename:
     input: INPUT_VCF
     output: tmp("chr_rename_map.txt")
     shell:
-        "python scripts/chr_rename_map.py {input} {output}"
+        "python {SCRIPTS_DIR}/chr_rename_map.py {input} {output}"
 
 # --- Pipeline Rules ---
 rule select_regions:
@@ -151,8 +146,7 @@ rule select_regions:
         vcf=INPUT_VCF,
         chr_rename_map=tmp("chr_rename_map.txt")
     output: vcf=intermediate(tmp_vcf("01_selected"))
-    log:
-        log_path("01_selected")
+    log: log_path("01_selected")
     shell: add_log("""
         bcftools view {F_READ_THREADS} {F_REGIONS} {input.vcf} -Ou |
         {{
@@ -173,8 +167,7 @@ rule normalize_and_split:
         vcf=tmp_vcf("01_selected"),
         ref=resource("hg38.fa")
     output: vcf=intermediate(tmp_vcf("02_normalized"))
-    log:
-        log_path("02_normalized")
+    log: log_path("02_normalized")
     shell: add_log("""
         bcftools norm {F_READ_THREADS} --force -m -any -f {input.ref} -Ou {input.vcf} | 
         bcftools annotate  -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | 
@@ -191,7 +184,7 @@ rule generate_groups_raw:
         groups=tmp("groups_raw.txt")
     params: suffix="raw"
     shell:
-        "python scripts/generate_groups.py {input.samples} {output.groups} --suffix {params.suffix}"
+        "python {SCRIPTS_DIR}/generate_groups.py {input.samples} {output.groups} --suffix {params.suffix}"
 
 rule annotate_raw_vcf:
     input:
@@ -199,8 +192,7 @@ rule annotate_raw_vcf:
         groups=tmp("groups_raw.txt")
     output:
         vcf=intermediate(tmp_vcf("03_raw_stats")),
-    log:
-        log_path("03_raw_stats")
+    log: log_path("03_raw_stats")
     shell: add_log("""
         bcftools view  {F_READ_THREADS} {input.vcf} -Ou |
         bcftools +fill-tags -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF | 
@@ -213,8 +205,7 @@ rule genotype_masking:
     input: tmp_vcf("03_raw_stats")
     output:
         vcf=intermediate(tmp_vcf("04_masked")),
-    log:
-        log_path("04_masked")
+    log: log_path("04_masked")
     params:
         min_gq=QC["min_gq"],
         min_dp=QC["min_dp"],
@@ -231,7 +222,7 @@ rule generate_groups_final:
         groups=tmp("groups_final.txt")
     params: suffix=""
     shell:
-        "python scripts/generate_groups.py {input.samples} {output.groups}"
+        "python {SCRIPTS_DIR}/generate_groups.py {input.samples} {output.groups}"
 
 
 rule sex_map:
@@ -240,7 +231,7 @@ rule sex_map:
     shell:
         """
         # Cleanly generate the standardized sex map
-        python scripts/generate_sex_map.py {input.samples} {output.sex_map}
+        python {SCRIPTS_DIR}/generate_sex_map.py {input.samples} {output.sex_map}
         """
 
 rule fix_ploidy:
@@ -251,8 +242,7 @@ rule fix_ploidy:
         sex_map=tmp("sex_map.txt"),
     output:
         vcf=intermediate(tmp_vcf("05_ploidy_fixed")),
-    log:
-        log_path("05_ploidy_fixed")
+    log: log_path("05_ploidy_fixed")
     shell: add_log("""
         bcftools +fixploidy {F_READ_THREADS} {input.vcf} -Ou  -- -s {input.sex_map} -p {input.ploidy} |
         write_tmp_vcf {output.vcf} 
@@ -264,8 +254,7 @@ use rule annotate_raw_vcf as annotate_final_vcf with:
         groups=tmp("groups_final.txt")
     output:
         vcf=intermediate(tmp_vcf("06_final_stats")),
-    log:
-        log_path("06_final_stats")
+    log: log_path("06_final_stats")
 
 if not USE_STREAM:
 
@@ -273,12 +262,11 @@ if not USE_STREAM:
         input: tmp_vcf("06_final_stats")
         output:
             vcf=full_sample_data_path
-        log:
-            expand(log_path("{prefix}_07_variant_qc_tagging"), prefix=PREFIX),
+        log: expand(log_path("{prefix}_07_variant_qc_tagging"), prefix=PREFIX),
         params:
             **QC_TAG_PARAMS
         shell: add_log("""
-            python scripts/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou  \
+            python {SCRIPTS_DIR}/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou  \
                 --qual {params.qual} \
                 --qd {params.qd} \
                 --mq {params.mq} \
@@ -299,8 +287,7 @@ if not USE_STREAM:
         output:
             all_sites=all_sites_path,
             pass_sites=pass_sites_path,
-        log:
-            expand(log_path("{prefix}_08_sites"), prefix=PREFIX),
+        log: expand(log_path("{prefix}_08_sites"), prefix=PREFIX),
         shell: add_log("""
             bcftools view {F_READ_THREADS} {input.in_vcf} -G -Ou |
             tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.all_sites} --write-index) |
@@ -317,14 +304,13 @@ else:
             chr_rename_map=tmp("chr_rename_map.txt"),
             groups_raw=tmp("groups_raw.txt"),
             groups_final=tmp("groups_final.txt"),
-            ploidy=tmp("ploidy_rules.txt"),
+            ploidy=resource("ploidy_rules.txt"),
             sex_map=tmp("sex_map.txt"),
         output:
             all_sites=all_sites_path,
             pass_sites=pass_sites_path,
             vcf=full_sample_data_path,
-        log:
-            expand(log_path("{prefix}_stream"), prefix=PREFIX),
+        log: expand(log_path("{prefix}_stream"), prefix=PREFIX),
         params:
             # QC parameters
             **QC_TAG_PARAMS,
@@ -366,7 +352,7 @@ else:
             bcftools +fill-tags -Ou -- -S {input.groups_final} -t HWE,NS,F_MISSING,ExcHet | 
             
             # variant_qc_tagging       
-            python scripts/tag_variant_qc.py -Ou  \
+            python {SCRIPTS_DIR}/tag_variant_qc.py -Ou  \
                 --qual {params.qual} \
                 --qd {params.qd} \
                 --mq {params.mq} \
@@ -388,6 +374,6 @@ else:
 onsuccess:
     # Cleanup empty logs
     from pathlib import Path
-    for f in Path("results/logs").glob("*.log"):
+    for f in Path(f"{RESULTS_DIR}/logs").glob("*.log"):
         if f.is_file() and f.stat().st_size == 0:
             f.unlink()
