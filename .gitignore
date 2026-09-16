@@ -6,7 +6,9 @@ __pycache__/
 .snakemake/
 
 # Outputs
-results*
+results/*
+results/tests/Snakefile/*
+!results/tests/Snakefile/expected
 
 # Resources (except targets and pypgx genes)
 resources/
@@ -17,6 +19,7 @@ resources/
 
 # Data
 data/*
+!data/test_Snakefile/
 
 # Generated VCFs and indices
 *.vcf.gz

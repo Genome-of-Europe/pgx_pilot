@@ -1,0 +1,12 @@
+country_code: "BE"
+input_vcf: "data/test_Snakefile/cohort.vcf.gz"
+sample_info: "data/test_Snakefile/samples.tsv"
+
+#local_resources:
+#  ref_fasta: "resources/hg38.fa"
+
+keep_intermediate: true
+
+## Save as BGZIP blocks but there is no compression so it's 99% ASCII
+tmp_vcf_O: v
+out_vcf_O: z0
