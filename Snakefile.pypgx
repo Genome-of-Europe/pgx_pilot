@@ -26,15 +26,11 @@ rule download_bundle:
     output:
         directory("resources/pypgx-bundle")
     params:
-        version=PYPGX_VERSION
+        url=f"https://github.com/sbslee/pypgx-bundle/archive/refs/tags/{PYPGX_VERSION}.tar.gz"
     shell:
         """
-        if [ -d "{output}/.git" ]; then
-            cd {output} && git fetch --tags && git checkout {params.version}
-        else
-            rm -rf {output}
-            git clone --branch {params.version} --depth 1 https://github.com/sbslee/pypgx-bundle {output}
-        fi
+        rm -rf {output} && mkdir -p {output}
+        curl -sSL --retry 3 {params.url} | tar -xz -C {output} --strip-components=1
         """
 
 rule generate_groups:
