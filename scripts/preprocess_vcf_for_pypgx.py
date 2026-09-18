@@ -7,8 +7,9 @@ vector-end encoding.
 """
 
 import argparse
-from cyvcf2 import VCF, Writer
+
 import numpy as np
+from cyvcf2 import VCF, Writer
 
 BCF_INT32_MISSING = -2147483648
 BCF_INT32_VECTOR_END = -2147483647
@@ -23,6 +24,7 @@ def preprocess_vcf_for_pypgx(input_vcf: str, output_vcf: str) -> None:
         Path to the input VCF/BCF file.
     output_vcf : str
         Path to the output VCF file (should end with .vcf.gz).
+
     """
     vcf = VCF(input_vcf)
     writer = Writer(output_vcf, vcf)
@@ -37,13 +39,16 @@ def preprocess_vcf_for_pypgx(input_vcf: str, output_vcf: str) -> None:
                 ad = None
 
             if ad is not None:
-                # Detect rows where every value is missing or vector-end
-                fully_missing = np.all(
-                    (ad == BCF_INT32_MISSING) | (ad == BCF_INT32_VECTOR_END), axis=1
-                )
-                if fully_missing.any():
-                    ad[fully_missing, 0] = BCF_INT32_MISSING
-                    ad[fully_missing, 1:] = BCF_INT32_VECTOR_END
+                if ad.ndim == 1:
+                    ad = ad.reshape(1, -1)
+                # Detect rows where any element is missing. PyPGX's underlying fuc
+                # parser attempts int(x) on comma-separated values and crashes with
+                # ValueError on '.' (e.g., AD='.,.' or AD='.,12'). Sanitizing any
+                # vector with missing values to a single '.' ensures seamless execution.
+                has_missing = np.any(ad == BCF_INT32_MISSING, axis=1)
+                if has_missing.any():
+                    ad[has_missing, 0] = BCF_INT32_MISSING
+                    ad[has_missing, 1:] = BCF_INT32_VECTOR_END
                     variant.set_format("AD", ad)
         writer.write_record(variant)
 

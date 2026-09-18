@@ -1,12 +1,13 @@
 """Tag variants with quality control flags in a VCF file using cyvcf2."""
 
 import argparse
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
 from cyvcf2 import VCF, Writer
 
 
-def _extract_scalar(val: Any) -> Any:
-    """Extract first element if value is a tuple or list, otherwise return as-is.
+def _extract_scalar(val: Any) -> Optional[float]:
+    """Extract first numeric float value from a scalar, sequence, or string.
 
     Parameters
     ----------
@@ -15,12 +16,18 @@ def _extract_scalar(val: Any) -> Any:
 
     Returns
     -------
-    Any
-        Scalar float/int or None.
+    Optional[float]
+        Numeric float value, or None if missing or non-numeric.
+
     """
     if isinstance(val, (list, tuple)):
-        return val[0] if len(val) > 0 else None
-    return val
+        val = val[0] if len(val) > 0 else None
+    if val is None or val == "." or val == "":
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
 
 
 def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) -> None:
@@ -34,6 +41,7 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
         Path to output VCF file (.vcf.gz).
     thresholds : dict
         QC threshold dictionary with cutoffs.
+
     """
     vcf_in = VCF(input_vcf)
 
@@ -42,7 +50,9 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
             "ID": "QC_STATUS",
             "Number": "1",
             "Type": "String",
-            "Description": "Variant QC status: PASS or comma-separated reasons for failure",
+            "Description": (
+                "Variant QC status: PASS or comma-separated reasons for failure"
+            ),
         })
 
     # Ensure required metrics are present in header if missing
