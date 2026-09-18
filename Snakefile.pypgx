@@ -112,6 +112,8 @@ rule run_pypgx:
             --assembly GRCh38 \
             --variants {input.vcf} \
             --force \
+            --do-not-plot-allele-fraction \
+            --do-not-plot-copy-number \
             {wildcards.gene} \
             $(dirname {output})
         """
