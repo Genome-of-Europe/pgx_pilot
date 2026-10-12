@@ -79,11 +79,9 @@ rule select_regions:
         # If the map file is not empty, rename chromosomes first
         if [ -s {input.chr_map} ]; then
             bcftools annotate --threads {threads} --rename-chrs {input.chr_map} {input.vcf} -Ou | \
-            bcftools view --threads {threads} -t {CANONICAL_CHRS} -Ou | \
-            bcftools view --threads {threads} -e 'ALT="*"' -O z -o {output.vcf}
+            bcftools view --threads {threads} -t {CANONICAL_CHRS} -Oz -o {output.vcf}
         else
-            bcftools view --threads {threads} -t {CANONICAL_CHRS} {input.vcf} -Ou | \
-            bcftools view --threads {threads} -e 'ALT="*"' -O z -o {output.vcf}
+            bcftools view --threads {threads} -t {CANONICAL_CHRS} {input.vcf} -Oz -o {output.vcf}
         fi
         """
 
@@ -95,6 +93,7 @@ rule normalize_and_split:
         """
         bcftools norm --threads {threads} --force -m -any -f {input.ref} -Ou {input.vcf} | \
         bcftools annotate --threads {threads} -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou | \
+        bcftools view --threads {threads} -e 'ALT="*"' -Ou | \
         bcftools norm --threads {threads} --rm-dup exact -Oz -o {output.vcf}
         """
 
