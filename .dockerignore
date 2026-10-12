@@ -1,6 +1,7 @@
 data/*
 resources/*
 !resources/target_genes.txt
+!resources/ploidy_rules.txt
 results/*
 work
 
@@ -14,4 +15,6 @@ work
 *.md
 *.txt
 !resources/target_genes.txt
+!resources/ploidy_rules.txt
 *.sif
+*.log*

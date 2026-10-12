@@ -14,6 +14,7 @@ if REPO_ROOT not in sys.path:
 from scripts.generate_groups import generate_genomics_metadata
 from scripts.generate_sex_map import generate_sex_map
 from scripts.tag_variant_qc import _extract_scalar
+from scripts.preprocess_vcf_for_pypgx import preprocess_vcf_for_pypgx
 
 
 class TestMetadataParsing(unittest.TestCase):
@@ -98,6 +99,35 @@ class TestTagVariantQcHelpers(unittest.TestCase):
         self.assertEqual(_extract_scalar(42.0), 42.0)
         self.assertIsNone(_extract_scalar([]))
         self.assertIsNone(_extract_scalar(None))
+
+
+class TestPreprocessVcf(unittest.TestCase):
+    """Test VCF preprocessing for PyPGX."""
+
+    def test_vcf_without_ad_header(self):
+        """Ensure VCF files without FORMAT/AD in header are handled gracefully without KeyError."""
+        vcf_content = (
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10000>\n"
+            "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1\n"
+            "chr1\t100\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_in, \
+             tempfile.NamedTemporaryFile("w", suffix=".vcf.gz", delete=False) as f_out:
+            f_in.write(vcf_content)
+            f_in_path = f_in.name
+            f_out_path = f_out.name
+
+        try:
+            preprocess_vcf_for_pypgx(f_in_path, f_out_path)
+            self.assertTrue(os.path.exists(f_out_path))
+            self.assertGreater(os.path.getsize(f_out_path), 0)
+        finally:
+            if os.path.exists(f_in_path):
+                os.remove(f_in_path)
+            if os.path.exists(f_out_path):
+                os.remove(f_out_path)
 
 
 if __name__ == "__main__":
