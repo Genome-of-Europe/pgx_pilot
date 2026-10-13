@@ -14,6 +14,7 @@ These perform the following:
 
 The goal is to allow partners to run the exact same workflow on their local data and produce standardized, comparable outputs.
 The workflow requires input data aligned to the **GRCh38 (hg38)** reference genome (both `chr1` and `1` chromosome naming formats are automatically detected and supported).
+The reference is written to `resources/hg38.fa` as an uppercase copy (about 3 GB), so normalized REF/ALT alleles never contain soft-masked lowercase bases.
 
 ## 2. Quick Start
 The pipeline can be run as Docker container, or directly from the code in the GitHub repository.
@@ -122,7 +123,7 @@ Results are written to the `results/` folder.
 
 ### Main Output Files
 *   **GoE Pipeline Outputs**
-    *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File for beacon.** PASS variants only.
+    *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File for beacon.** PASS variants only. The workflow stops with an error if any REF/ALT allele is outside the uppercase IUPAC codes that Beacon accepts.
     *   `results/{output_prefix}.sites.all.vcf.gz`: **For GoE PGx pilot (Internal).** All variants including those that failed QC.
     *   `results/{output_prefix}.full_sample_data.vcf.gz`: **The full VCF with all sample genotypes.** All variants including those that failed QC.
 
