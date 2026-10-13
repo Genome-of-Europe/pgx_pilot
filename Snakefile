@@ -31,11 +31,17 @@ rule prepare_reference:
     output: fasta="resources/hg38.fa", fai="resources/hg38.fa.fai"
     shell:
         """
-        if [[ "{input.src}" == *.gz ]]; then 
-            gunzip -c {input.src} > {output.fasta}
-        else 
-            ln -sf $(realpath "{input.src}") {output.fasta}
-        fi
+        # Uppercase the sequence (headers untouched): UCSC hg38 is soft-masked, and
+        # bcftools norm copies lowercase repeat bases into REF/ALT, which Beacon rejects.
+        # Remove any old output first, so a previously symlinked hg38.fa never
+        # redirects the write into the source FASTA.
+        rm -f {output.fasta} {output.fasta}.tmp
+        if [[ "{input.src}" == *.gz ]]; then
+            gunzip -c {input.src}
+        else
+            cat {input.src}
+        fi | awk '/^>/ {{ print; next }} {{ print toupper($0) }}' > {output.fasta}.tmp
+        mv {output.fasta}.tmp {output.fasta}
         samtools faidx {output.fasta}
         """
 
@@ -232,4 +238,7 @@ rule create_sites_vcf:
         # Filter for PASS status.
         bcftools view --threads {threads} -G -i 'INFO/QC_STATUS="PASS"' {input} -O z -o {output.pass_sites}
         bcftools index --threads {threads} -t {output.pass_sites}
+
+        # Fail if any REF/ALT allele would be rejected by Beacon (e.g. lowercase bases).
+        python scripts/check_beacon_alleles.py {output.pass_sites}
         """

@@ -15,6 +15,7 @@ from scripts.generate_groups import generate_genomics_metadata
 from scripts.generate_sex_map import generate_sex_map
 from scripts.tag_variant_qc import _extract_scalar
 from scripts.preprocess_vcf_for_pypgx import preprocess_vcf_for_pypgx
+from scripts.check_beacon_alleles import find_invalid_alleles
 
 
 class TestMetadataParsing(unittest.TestCase):
@@ -128,6 +129,45 @@ class TestPreprocessVcf(unittest.TestCase):
                 os.remove(f_in_path)
             if os.path.exists(f_out_path):
                 os.remove(f_out_path)
+
+
+class TestCheckBeaconAlleles(unittest.TestCase):
+    """Test the Beacon allele check on the exported sites VCF."""
+
+    def _check(self, records):
+        vcf_content = (
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10000>\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        ) + "".join(f"chr1\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\t.\n" for pos, ref, alt in records)
+        with tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_in:
+            f_in.write(vcf_content)
+            f_in_path = f_in.name
+        try:
+            return find_invalid_alleles(f_in_path)
+        finally:
+            os.remove(f_in_path)
+
+    def test_uppercase_alleles_pass(self):
+        """SNVs, indels, N and multiallelic records in uppercase are accepted."""
+        n_invalid, examples = self._check([(100, "A", "G"), (200, "ACGT", "A"), (300, "N", "C,T")])
+        self.assertEqual(n_invalid, 0)
+        self.assertEqual(examples, [])
+
+    def test_lowercase_alleles_fail(self):
+        """Lowercase bases in REF or in any ALT are rejected (soft-masked reference)."""
+        n_invalid, examples = self._check([
+            (100, "Cgtgt", "C"),
+            (200, "A", "G,Atg"),
+            (300, "A", "G"),
+        ])
+        self.assertEqual(n_invalid, 2)
+        self.assertEqual(examples, ["chr1:100:Cgtgt:C", "chr1:200:A:G,Atg"])
+
+    def test_spanning_deletion_fails(self):
+        """The '*' allele is outside the Beacon pattern."""
+        n_invalid, _ = self._check([(100, "A", "*")])
+        self.assertEqual(n_invalid, 1)
 
 
 if __name__ == "__main__":
