@@ -79,6 +79,8 @@ The sample metadata file must be a three column TSV file, with or without header
 **QC Thresholds:**
 The pipeline uses standardized thresholds defined in the `qc_thresholds` section of `config.yaml`:
 
+Independently of these thresholds, variants with no alternate allele left after genotype masking and ploidy fixing (AC=0) are tagged `FAIL_AC`, so they stay in `sites.all` but are never exported to `sites.pass`.
+
 ## 5. Pipeline Workflows
 
 This repository contains two specialized workflows.

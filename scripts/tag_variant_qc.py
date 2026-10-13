@@ -30,6 +30,31 @@ def _extract_scalar(val: Any) -> Optional[float]:
         return None
 
 
+def _all_positive(val: Any) -> bool:
+    """Check that a scalar or every element of a sequence is a number above zero.
+
+    Parameters
+    ----------
+    val : Any
+        Value from VCF record INFO field.
+
+    Returns
+    -------
+    bool
+        True if all values are numeric and greater than zero; False if any value
+        is zero, negative, missing or non-numeric, or if there are no values.
+
+    """
+    values = list(val) if isinstance(val, (list, tuple)) else [val]
+    if not values:
+        return False
+    for v in values:
+        num = _extract_scalar(v)
+        if num is None or num <= 0:
+            return False
+    return True
+
+
 def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) -> None:
     """Tag variant records with QC_STATUS info field based on thresholds.
 
@@ -115,6 +140,11 @@ def tag_variant_qc(input_vcf: str, output_vcf: str, thresholds: Dict[str, Any]) 
         f_missing = _extract_scalar(info.get("F_MISSING"))
         if f_missing is not None and f_missing > max_missing_thresh:
             reasons.append("FAIL_MISSING")
+
+        # Genotype masking and ploidy fixing can remove every ALT call (AC=0).
+        # Such alleles are not observed in the cohort and must not be exported.
+        if not _all_positive(info.get("AC")):
+            reasons.append("FAIL_AC")
 
         status = ",".join(reasons) if reasons else "PASS"
         record.INFO["QC_STATUS"] = status

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 import pandas as pd
+from cyvcf2 import VCF
 
 # Ensure repository root is on sys.path
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -13,7 +14,7 @@ if REPO_ROOT not in sys.path:
 
 from scripts.generate_groups import generate_genomics_metadata
 from scripts.generate_sex_map import generate_sex_map
-from scripts.tag_variant_qc import _extract_scalar
+from scripts.tag_variant_qc import _all_positive, _extract_scalar, tag_variant_qc
 from scripts.preprocess_vcf_for_pypgx import preprocess_vcf_for_pypgx
 
 
@@ -99,6 +100,60 @@ class TestTagVariantQcHelpers(unittest.TestCase):
         self.assertEqual(_extract_scalar(42.0), 42.0)
         self.assertIsNone(_extract_scalar([]))
         self.assertIsNone(_extract_scalar(None))
+
+    def test_all_positive(self):
+        """Test that only present, numeric values above zero count as positive."""
+        self.assertTrue(_all_positive(1))
+        self.assertTrue(_all_positive((2, 5)))
+        self.assertFalse(_all_positive(0))
+        self.assertFalse(_all_positive((3, 0)))
+        self.assertFalse(_all_positive(None))
+        self.assertFalse(_all_positive([]))
+
+
+class TestTagVariantQc(unittest.TestCase):
+    """Test QC_STATUS tagging on a small VCF."""
+
+    THRESHOLDS = {
+        "qual": 30.0, "qd": 2.0, "mq": 40.0, "fs": 60.0, "readpos": -8.0, "min_dp": 10,
+        "min_gq": 20, "ab_ratio": 0.2, "hwe": 1e-6, "max_missing": 0.1,
+    }
+
+    def test_ac_zero_fails(self):
+        """Records without any remaining ALT allele (AC=0 or missing) are tagged FAIL_AC."""
+        vcf_content = (
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10000>\n"
+            "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count\">\n"
+            "##INFO=<ID=F_MISSING,Number=1,Type=Float,Description=\"Fraction missing\">\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            "chr1\t100\t.\tA\tG\t50\t.\tAC=1;F_MISSING=0\n"
+            "chr1\t200\t.\tA\tG\t50\t.\tAC=0;F_MISSING=0.05\n"
+            "chr1\t300\t.\tA\tG\t50\t.\tAC=0;F_MISSING=0.5\n"
+            "chr1\t400\t.\tA\tG\t50\t.\tF_MISSING=0\n"
+            "chr1\t500\t.\tA\tG,T\t50\t.\tAC=2,0;F_MISSING=0\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_in, \
+             tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_out:
+            f_in.write(vcf_content)
+            f_in_path = f_in.name
+            f_out_path = f_out.name
+
+        try:
+            tag_variant_qc(f_in_path, f_out_path, self.THRESHOLDS)
+            vcf = VCF(f_out_path)
+            status = {record.POS: record.INFO.get("QC_STATUS") for record in vcf}
+            vcf.close()
+            self.assertEqual(status, {
+                100: "PASS",
+                200: "FAIL_AC",
+                300: "FAIL_MISSING,FAIL_AC",
+                400: "FAIL_AC",
+                500: "FAIL_AC",
+            })
+        finally:
+            os.remove(f_in_path)
+            os.remove(f_out_path)
 
 
 class TestPreprocessVcf(unittest.TestCase):
