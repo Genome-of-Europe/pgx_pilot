@@ -1,0 +1,38 @@
+[project]
+name = "pgx_pilot"
+version = "0.1.0"
+description = "PGx pilot pipeline for Genome of Europe"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cyvcf2>=0.34.0",
+    "pandas>=2.2.2,<2.3.0",
+    "pypgx>=0.27.0",
+    "pysam>=0.24.0",
+    "snakemake>=9.26.1",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D"]
+ignore = ["D100", "D104", "D203", "D213"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]

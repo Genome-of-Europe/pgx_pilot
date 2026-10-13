@@ -17,6 +17,7 @@ resources/
 
 # Data
 data/*
+tests/data/
 
 # Generated VCFs and indices
 *.vcf.gz

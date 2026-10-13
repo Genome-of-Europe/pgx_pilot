@@ -20,7 +20,10 @@ rule all:
     input:
         "results/pgx/merged_alleles.csv",
         "results/pgx/merged_genotypes.csv",
-        "results/pgx/merged_phenotypes.csv"
+        "results/pgx/merged_phenotypes.csv",
+        "results/pgx/merged_sample_alleles.csv",
+        "results/pgx/merged_sample_genotypes.csv",
+        "results/pgx/merged_sample_phenotypes.csv"
 
 rule download_bundle:
     output:
@@ -118,9 +121,28 @@ rule run_pypgx:
             $(dirname {output})
         """
 
+rule extract_sample_pgx_data:
+    input:
+        zip="results/pgx/{gene}/results.zip"
+    output:
+        alleles="results/pgx/samples/{gene}_alleles.csv",
+        genotypes="results/pgx/samples/{gene}_genotypes.csv",
+        phenotypes="results/pgx/samples/{gene}_phenotypes.csv"
+    shell:
+        """
+        python scripts/extract_pgx_samples.py \
+            --zip {input.zip} \
+            --gene {wildcards.gene} \
+            --out-alleles {output.alleles} \
+            --out-genotypes {output.genotypes} \
+            --out-phenotypes {output.phenotypes}
+        """
+
 rule calculate_stratified_af:
     input:
-        zip="results/pgx/{gene}/results.zip",
+        alleles="results/pgx/samples/{gene}_alleles.csv",
+        genotypes="results/pgx/samples/{gene}_genotypes.csv",
+        phenotypes="results/pgx/samples/{gene}_phenotypes.csv",
         groups="results/temp/pgx_groups.txt"
     output:
         alleles="results/pgx/af/{gene}_alleles.csv",
@@ -129,7 +151,9 @@ rule calculate_stratified_af:
     shell:
         """
         python scripts/calculate_pgx_stats.py \
-            --zip {input.zip} \
+            --sample-alleles {input.alleles} \
+            --sample-genotypes {input.genotypes} \
+            --sample-phenotypes {input.phenotypes} \
             --groups {input.groups} \
             --gene {wildcards.gene} \
             --out-alleles {output.alleles} \
@@ -163,3 +187,30 @@ rule merge_phenotypes:
             if not os.path.exists(f) or os.path.getsize(f) == 0:
                 raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream calculation failed.")
         pd.concat([pd.read_csv(f) for f in input]).to_csv(output[0], index=False)
+
+rule merge_sample_alleles:
+    input: expand("results/pgx/samples/{gene}_alleles.csv", gene=GENES)
+    output: "results/pgx/merged_sample_alleles.csv"
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream extraction failed.")
+        pd.concat([pd.read_csv(f, dtype=str) for f in input]).to_csv(output[0], index=False)
+
+rule merge_sample_genotypes:
+    input: expand("results/pgx/samples/{gene}_genotypes.csv", gene=GENES)
+    output: "results/pgx/merged_sample_genotypes.csv"
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream extraction failed.")
+        pd.concat([pd.read_csv(f, dtype=str) for f in input]).to_csv(output[0], index=False)
+
+rule merge_sample_phenotypes:
+    input: expand("results/pgx/samples/{gene}_phenotypes.csv", gene=GENES)
+    output: "results/pgx/merged_sample_phenotypes.csv"
+    run:
+        for f in input:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                raise ValueError(f"Corrupt or empty file detected: '{f}'. Upstream extraction failed.")
+        pd.concat([pd.read_csv(f, dtype=str) for f in input]).to_csv(output[0], index=False)
