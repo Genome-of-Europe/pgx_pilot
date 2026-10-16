@@ -85,7 +85,7 @@ rule prepare_reference:
         else 
             ln -sf $(realpath "{input.src}") {output.fasta}
         fi
-        python -c "import pysam; pysam.faidx('{output.fasta}')"
+        samtools faidx {output.fasta}
         """
 
 rule download_reference_source:
@@ -233,7 +233,7 @@ rule variant_qc_tagging:
         ab_ratio=config["qc_thresholds"]["ab_ratio"]
     shell:
         """
-        python {SCRIPTS_DIR}/tag_variant_qc.py {input} {output.vcf}.tmp.vcf.gz \
+        python {SCRIPTS_DIR}/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou \
             --qual {params.qual} \
             --qd {params.qd} \
             --mq {params.mq} \
@@ -243,9 +243,8 @@ rule variant_qc_tagging:
             --max_missing {params.max_missing} \
             --min_dp {params.min_dp} \
             --min_gq {params.min_gq} \
-            --ab_ratio {params.ab_ratio}
-        bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index {output.vcf}.tmp.vcf.gz
-        rm -f {output.vcf}.tmp.vcf.gz
+            --ab_ratio {params.ab_ratio} |
+        bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index
         """
 
 rule create_sites_vcf:
