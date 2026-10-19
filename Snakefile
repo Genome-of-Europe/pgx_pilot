@@ -13,6 +13,20 @@ INPUT_VCF = config.get("input_vcf")
 if not INPUT_VCF:
     raise WorkflowError("Configuration error: 'input_vcf' is not specified in config.yaml.")
 
+QC = config.get("qc_thresholds", {})
+QC_TAG_PARAMS = {
+    "qual": QC["qual"],
+    "qd": QC["qd"],
+    "mq": QC["mq"],
+    "fs": QC["fs"],
+    "readpos": QC["readpos"],
+    "hwe": QC["hwe"],
+    "max_missing": QC["max_missing"],
+    "min_dp": QC["min_dp"],
+    "min_gq": QC["min_gq"],
+    "ab_ratio": QC["ab_ratio"],
+}
+
 REGIONS = config.get("regions", "")
 F_REGIONS = "" if not REGIONS else f"-r {REGIONS}"
 
@@ -175,10 +189,10 @@ rule genotype_masking:
         vcf=intermediate(tmp_vcf("04_masked"))
     log: log_path("04_masked")
     params:
-        min_gq=config["qc_thresholds"]["min_gq"],
-        min_dp=config["qc_thresholds"]["min_dp"],
-        min_ab=config["qc_thresholds"]["ab_ratio"],
-        max_ab=1 - config["qc_thresholds"]["ab_ratio"]
+        min_gq=QC["min_gq"],
+        min_dp=QC["min_dp"],
+        min_ab=QC["ab_ratio"],
+        max_ab=1 - QC["ab_ratio"]
     shell: add_log("""
         bcftools +setGT {F_READ_THREADS} {input} -Ou -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))' |
         write_tmp_vcf {output.vcf}
@@ -212,19 +226,13 @@ rule fix_ploidy:
         write_tmp_vcf {output.vcf}
     """)
 
-rule annotate_final_vcf:
+use rule annotate_raw_vcf as annotate_final_vcf with:
     input:
         vcf=tmp_vcf("05_ploidy_fixed"),
         groups=tmp("groups_final.txt")
     output:
         vcf=intermediate(tmp_vcf("06_final_stats"))
     log: log_path("06_final_stats")
-    shell: add_log("""
-        bcftools view {F_READ_THREADS} {input.vcf} -Ou |
-        bcftools +fill-tags -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF |
-        bcftools +fill-tags -Ou -- -S {input.groups} -t HWE,NS,F_MISSING,ExcHet |
-        write_tmp_vcf {output.vcf}
-    """)
 
 rule variant_qc_tagging:
     input: tmp_vcf("06_final_stats")
@@ -232,16 +240,7 @@ rule variant_qc_tagging:
         vcf=full_sample_data_path
     log: expand(log_path("{prefix}_07_variant_qc_tagging"), prefix=PREFIX)
     params:
-        qual=config["qc_thresholds"]["qual"],
-        qd=config["qc_thresholds"]["qd"],
-        mq=config["qc_thresholds"]["mq"],
-        fs=config["qc_thresholds"]["fs"],
-        readpos=config["qc_thresholds"]["readpos"],
-        hwe=config["qc_thresholds"]["hwe"],
-        max_missing=config["qc_thresholds"]["max_missing"],
-        min_dp=config["qc_thresholds"]["min_dp"],
-        min_gq=config["qc_thresholds"]["min_gq"],
-        ab_ratio=config["qc_thresholds"]["ab_ratio"]
+        **QC_TAG_PARAMS
     shell: add_log("""
         python {SCRIPTS_DIR}/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou \
             --qual {params.qual} \
