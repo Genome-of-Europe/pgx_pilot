@@ -1,5 +1,6 @@
 #ftype: python
 import os
+from textwrap import dedent
 from snakemake.exceptions import WorkflowError
 from utils.vcf import vcf_format_from_output_type
 
@@ -35,6 +36,7 @@ F_WRITE_TMP_INDEX = "--write-index" if KEEP_INTERMEDIATE and INDEX_TMP_FILES els
 # --- Global Paths & Helpers ---
 RESULTS_DIR = config.get("results_dir", "results")
 TEMP_DIR = f"{RESULTS_DIR}/temp"
+LOGS_DIR = f"{RESULTS_DIR}/logs"
 SCRIPTS_DIR = f"{workflow.basedir}/scripts"
 
 def resource(name: str) -> str:
@@ -49,6 +51,14 @@ def tmp_vcf(name: str) -> str:
 def intermediate(path: str, keep: bool = KEEP_INTERMEDIATE) -> str:
     """Mark path as temp() unless keep_intermediate is set to True."""
     return path if keep else temp(path)
+
+def log_path(name: str) -> str:
+    """Generate log file path for a given rule name."""
+    return f"{LOGS_DIR}/{name}.log"
+
+def add_log(cmd: str) -> str:
+    """Wrap a shell command to stream combined stdout/stderr to console and log file."""
+    return f"(\n{dedent(cmd).strip()}\n) 2>&1 | tee {{log}}"
 
 # --- Global Bash Helper for Temporary BCF Output ---
 shell.prefix(
@@ -105,8 +115,8 @@ rule select_regions:
         vcf=INPUT_VCF,
         chr_rename_map=tmp("chr_rename_map.txt")
     output: vcf=intermediate(tmp_vcf("01_selected"))
-    shell:
-        """
+    log: log_path("01_selected")
+    shell: add_log("""
         bcftools view {F_READ_THREADS} {F_REGIONS} {input.vcf} -Ou |
         {{
             # If the map file is not empty, rename chromosomes
@@ -119,21 +129,21 @@ rule select_regions:
         }} |
         bcftools view -t {CANONICAL_CHRS} -Ou |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 rule normalize_and_split:
     input:
         vcf=tmp_vcf("01_selected"),
         ref=resource("hg38.fa")
     output: vcf=intermediate(tmp_vcf("02_normalized"))
-    shell:
-        """
+    log: log_path("02_normalized")
+    shell: add_log("""
         bcftools norm {F_READ_THREADS} --force -m -any -f {input.ref} -Ou {input.vcf} |
         bcftools annotate -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou |
         bcftools view {F_READ_THREADS} -e 'ALT="*"' -Ou |
         bcftools norm --rm-dup exact -Ou |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 # --- QC Workflow ---
 
@@ -151,28 +161,28 @@ rule annotate_raw_vcf:
         groups=tmp("groups_raw.txt")
     output:
         vcf=intermediate(tmp_vcf("03_raw_stats"))
-    shell:
-        """
+    log: log_path("03_raw_stats")
+    shell: add_log("""
         bcftools view {F_READ_THREADS} {input.vcf} -Ou |
         bcftools +fill-tags -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF |
         bcftools +fill-tags -Ou -- -S {input.groups} -t HWE,NS,F_MISSING,ExcHet |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 rule genotype_masking:
     input: tmp_vcf("03_raw_stats")
     output:
         vcf=intermediate(tmp_vcf("04_masked"))
+    log: log_path("04_masked")
     params:
         min_gq=config["qc_thresholds"]["min_gq"],
         min_dp=config["qc_thresholds"]["min_dp"],
         min_ab=config["qc_thresholds"]["ab_ratio"],
         max_ab=1 - config["qc_thresholds"]["ab_ratio"]
-    shell:
-        """
+    shell: add_log("""
         bcftools +setGT {F_READ_THREADS} {input} -Ou -- -t q -n . -i 'FMT/GQ < {params.min_gq} | FMT/DP < {params.min_dp} | (GT="het" & (FMT/AD[*:0] + FMT/AD[*:1]) > 0 & ((FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) < {params.min_ab} | (FMT/AD[*:1])/(FMT/AD[*:0]+FMT/AD[*:1]) > {params.max_ab}))' |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 rule generate_groups_final:
     input: samples=config["sample_info"]
@@ -196,11 +206,11 @@ rule fix_ploidy:
         sex_map=tmp("sex_map.txt")
     output:
         vcf=intermediate(tmp_vcf("05_ploidy_fixed"))
-    shell:
-        """
+    log: log_path("05_ploidy_fixed")
+    shell: add_log("""
         bcftools +fixploidy {F_READ_THREADS} {input.vcf} -Ou -- -s {input.sex_map} -p {input.ploidy} |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 rule annotate_final_vcf:
     input:
@@ -208,18 +218,19 @@ rule annotate_final_vcf:
         groups=tmp("groups_final.txt")
     output:
         vcf=intermediate(tmp_vcf("06_final_stats"))
-    shell:
-        """
+    log: log_path("06_final_stats")
+    shell: add_log("""
         bcftools view {F_READ_THREADS} {input.vcf} -Ou |
         bcftools +fill-tags -Ou -- -S {input.groups} -t AC,AN,AF,AC_Het,AC_Hom,AC_Hemi,MAF |
         bcftools +fill-tags -Ou -- -S {input.groups} -t HWE,NS,F_MISSING,ExcHet |
         write_tmp_vcf {output.vcf}
-        """
+    """)
 
 rule variant_qc_tagging:
     input: tmp_vcf("06_final_stats")
     output:
         vcf=full_sample_data_path
+    log: expand(log_path("{prefix}_07_variant_qc_tagging"), prefix=PREFIX)
     params:
         qual=config["qc_thresholds"]["qual"],
         qd=config["qc_thresholds"]["qd"],
@@ -231,8 +242,7 @@ rule variant_qc_tagging:
         min_dp=config["qc_thresholds"]["min_dp"],
         min_gq=config["qc_thresholds"]["min_gq"],
         ab_ratio=config["qc_thresholds"]["ab_ratio"]
-    shell:
-        """
+    shell: add_log("""
         python {SCRIPTS_DIR}/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou \
             --qual {params.qual} \
             --qd {params.qd} \
@@ -245,7 +255,7 @@ rule variant_qc_tagging:
             --min_gq {params.min_gq} \
             --ab_ratio {params.ab_ratio} |
         bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index
-        """
+    """)
 
 rule create_sites_vcf:
     input:
@@ -253,9 +263,19 @@ rule create_sites_vcf:
     output:
         all_sites=all_sites_path,
         pass_sites=pass_sites_path
-    shell:
-        """
+    log: expand(log_path("{prefix}_08_sites"), prefix=PREFIX)
+    shell: add_log("""
         bcftools view {F_READ_THREADS} {input.in_vcf} -G -Ou |
         tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.all_sites} --write-index) |
         bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.pass_sites} -i 'INFO/QC_STATUS="PASS"' --write-index
-        """
+    """)
+
+onsuccess:
+    from pathlib import Path
+    if os.path.exists(LOGS_DIR):
+        for f in Path(LOGS_DIR).glob("*.log"):
+            if f.is_file() and f.stat().st_size == 0:
+                f.unlink()
+
+onerror:
+    print(f"\\nWorkflow encountered an error. Check detailed step logs in: {LOGS_DIR}/\\n")
