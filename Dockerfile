@@ -31,6 +31,15 @@ COPY env.yml /tmp/env.yml
 # Create the environment, clean up mamba cache
 RUN mamba env create -f /tmp/env.yml -n pgx_pilot && mamba clean -afy
 
+# Build and overlay bcftools pinned to commit 385820f for native in-memory uppercase (--check-ref C)
+RUN git clone --depth 1 --recurse-submodules https://github.com/samtools/htslib.git /tmp/htslib && \
+    git clone https://github.com/samtools/bcftools.git /tmp/bcftools && \
+    cd /tmp/bcftools && \
+    git checkout 385820f && \
+    make prefix=/opt/conda/envs/pgx_pilot HTSDIR=/tmp/htslib -j$(nproc) && \
+    make prefix=/opt/conda/envs/pgx_pilot install && \
+    rm -rf /tmp/bcftools /tmp/htslib
+
 # Ensure the environment is on the PATH
 ENV PATH=/opt/conda/envs/pgx_pilot/bin:$PATH
 

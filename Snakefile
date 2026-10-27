@@ -104,6 +104,7 @@ rule prepare_reference:
         fai=resource("hg38.fa.fai")
     shell:
         """
+        rm -f {output.fasta}
         if [[ "{input.src}" == *.gz ]]; then 
             gunzip -c {input.src} > {output.fasta}
         else 
@@ -152,7 +153,7 @@ rule normalize_and_split:
     output: vcf=intermediate(tmp_vcf("02_normalized"))
     log: log_path("02_normalized")
     shell: add_log("""
-        bcftools norm {F_READ_THREADS} --force -m -any -f {input.ref} -Ou {input.vcf} |
+        bcftools norm {F_READ_THREADS} --force -m -any --check-ref eC -f {input.ref} -Ou {input.vcf} |
         bcftools annotate -x ID -I +'%CHROM:%POS:%REF:%ALT' -Ou |
         bcftools view {F_READ_THREADS} -e 'ALT="*"' -Ou |
         bcftools norm --rm-dup exact -Ou |
