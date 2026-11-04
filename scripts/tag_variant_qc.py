@@ -33,6 +33,27 @@ def _extract_scalar(val: Any) -> Optional[float]:
         return None
 
 
+def _optional_float(val: Any) -> Optional[float]:
+    """Parse an optional float value from CLI string or Python object.
+
+    Parameters
+    ----------
+    val : Any
+        Input value (string, float, int, or None).
+
+    Returns
+    -------
+    Optional[float]
+        Parsed float, or None if value represents null/None.
+
+    """
+    if val is None:
+        return None
+    if isinstance(val, str) and val.strip().lower() in ("none", "null", ""):
+        return None
+    return float(val)
+
+
 def modify_vcf_header(vcf: VCF) -> None:
     """Ensure all required QC header fields and command line provenance are present.
 
@@ -52,7 +73,9 @@ def modify_vcf_header(vcf: VCF) -> None:
                 "Number": "1",
                 "Type": "String",
                 "Description": (
-                    "Variant QC status: PASS or comma-separated reasons for failure"
+                    "Variant QC status: PASS or comma-separated list of failed "
+                    "filters (FAIL_QUAL, FAIL_QD, FAIL_MQ, FAIL_FS, "
+                    "FAIL_ReadPosRankSum, FAIL_HWE, FAIL_MISSING)"
                 ),
             }
         )
@@ -74,12 +97,16 @@ def modify_vcf_header(vcf: VCF) -> None:
 
 
 def _get_threshold(
-    thresholds: Union[Dict[str, Any], argparse.Namespace], key: str, default: Any = None
-) -> Any:
-    """Retrieve threshold cutoff from dict or Namespace object."""
+    thresholds: Union[Dict[str, Any], argparse.Namespace],
+    key: str,
+    default: Optional[float] = None,
+) -> Optional[float]:
+    """Retrieve optional float threshold cutoff from dict or Namespace object."""
     if isinstance(thresholds, dict):
-        return thresholds.get(key, default)
-    return getattr(thresholds, key, default)
+        raw = thresholds.get(key, default)
+    else:
+        raw = getattr(thresholds, key, default)
+    return _optional_float(raw)
 
 
 def _tag_variant_records(
@@ -88,51 +115,57 @@ def _tag_variant_records(
     thresholds: Union[Dict[str, Any], argparse.Namespace],
 ) -> None:
     """Iterate over records in vcf_in, compute QC_STATUS, and write to vcf_out."""
-    qual_thresh = _get_threshold(thresholds, "qual", 30.0)
-    qd_thresh = _get_threshold(thresholds, "qd", 2.0)
-    mq_thresh = _get_threshold(thresholds, "mq", 40.0)
-    fs_thresh = _get_threshold(thresholds, "fs", 60.0)
-    readpos_thresh = _get_threshold(thresholds, "readpos", -8.0)
-    min_dp_thresh = _get_threshold(thresholds, "min_dp", 10)
-    hwe_thresh = _get_threshold(thresholds, "hwe", 1e-6)
-    max_missing_thresh = _get_threshold(thresholds, "max_missing", 0.1)
+    qual_thresh = _get_threshold(thresholds, "qual", None)
+    qd_thresh = _get_threshold(thresholds, "qd", None)
+    mq_thresh = _get_threshold(thresholds, "mq", None)
+    fs_thresh = _get_threshold(thresholds, "fs", None)
+    readpos_thresh = _get_threshold(thresholds, "readpos", None)
+    hwe_thresh = _get_threshold(thresholds, "hwe", None)
+    max_missing_thresh = _get_threshold(thresholds, "max_missing", None)
 
     record: Variant
     for record in vcf_in:
         reasons = []
 
-        if record.QUAL is not None and record.QUAL >= 0 and record.QUAL < qual_thresh:
+        if (
+            qual_thresh is not None
+            and record.QUAL is not None
+            and record.QUAL >= 0
+            and record.QUAL < qual_thresh
+        ):
             reasons.append("FAIL_QUAL")
 
         info = record.INFO
 
-        qd = _extract_scalar(info.get("QD"))
-        if qd is not None and qd < qd_thresh:
-            reasons.append("FAIL_QD")
+        if qd_thresh is not None:
+            qd = _extract_scalar(info.get("QD"))
+            if qd is not None and qd < qd_thresh:
+                reasons.append("FAIL_QD")
 
-        mq = _extract_scalar(info.get("MQ"))
-        if mq is not None and mq < mq_thresh:
-            reasons.append("FAIL_MQ")
+        if mq_thresh is not None:
+            mq = _extract_scalar(info.get("MQ"))
+            if mq is not None and mq < mq_thresh:
+                reasons.append("FAIL_MQ")
 
-        fs = _extract_scalar(info.get("FS"))
-        if fs is not None and fs > fs_thresh:
-            reasons.append("FAIL_FS")
+        if fs_thresh is not None:
+            fs = _extract_scalar(info.get("FS"))
+            if fs is not None and fs > fs_thresh:
+                reasons.append("FAIL_FS")
 
-        readpos = _extract_scalar(info.get("ReadPosRankSum"))
-        if readpos is not None and readpos < readpos_thresh:
-            reasons.append("FAIL_ReadPosRankSum")
+        if readpos_thresh is not None:
+            readpos = _extract_scalar(info.get("ReadPosRankSum"))
+            if readpos is not None and readpos < readpos_thresh:
+                reasons.append("FAIL_ReadPosRankSum")
 
-        dp = _extract_scalar(info.get("DP"))
-        if dp is not None and dp < min_dp_thresh:
-            reasons.append("FAIL_DP")
+        if hwe_thresh is not None:
+            hwe = _extract_scalar(info.get("HWE"))
+            if hwe is not None and hwe < hwe_thresh:
+                reasons.append("FAIL_HWE")
 
-        hwe = _extract_scalar(info.get("HWE"))
-        if hwe is not None and hwe < hwe_thresh:
-            reasons.append("FAIL_HWE")
-
-        f_missing = _extract_scalar(info.get("F_MISSING"))
-        if f_missing is not None and f_missing > max_missing_thresh:
-            reasons.append("FAIL_MISSING")
+        if max_missing_thresh is not None:
+            f_missing = _extract_scalar(info.get("F_MISSING"))
+            if f_missing is not None and f_missing > max_missing_thresh:
+                reasons.append("FAIL_MISSING")
 
         status = ",".join(reasons) if reasons else "PASS"
         record.INFO["QC_STATUS"] = status
@@ -167,9 +200,8 @@ def tag_variant_qc(
     else:
         vcf_in = input_vcf
 
-    modify_vcf_header(vcf_in)
-
     if isinstance(output_vcf, str):
+        modify_vcf_header(vcf_in)
         vcf_out = Writer(output_vcf, vcf_in)
         close_out = True
     else:
@@ -212,16 +244,13 @@ def main() -> None:
         help="Output format: u/b: un/compressed BCF, v/z: un/compressed VCF [v]",
     )
 
-    parser.add_argument("--qual", type=float, default=30.0)
-    parser.add_argument("--qd", type=float, default=2.0)
-    parser.add_argument("--mq", type=float, default=40.0)
-    parser.add_argument("--fs", type=float, default=60.0)
-    parser.add_argument("--readpos", type=float, default=-8.0)
-    parser.add_argument("--min_dp", type=int, default=10)
-    parser.add_argument("--min_gq", type=int, default=20)
-    parser.add_argument("--ab_ratio", type=float, default=0.2)
-    parser.add_argument("--hwe", type=float, default=1e-6)
-    parser.add_argument("--max_missing", type=float, default=0.1)
+    parser.add_argument("--qual", type=_optional_float, default=None)
+    parser.add_argument("--qd", type=_optional_float, default=None)
+    parser.add_argument("--mq", type=_optional_float, default=None)
+    parser.add_argument("--fs", type=_optional_float, default=None)
+    parser.add_argument("--readpos", type=_optional_float, default=None)
+    parser.add_argument("--hwe", type=_optional_float, default=None)
+    parser.add_argument("--max_missing", type=_optional_float, default=None)
 
     args = parser.parse_args()
 
