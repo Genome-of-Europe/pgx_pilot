@@ -19,14 +19,17 @@ output_prefix: "pgx_pilot" # Prefix for final VCF files
 keep_intermediate: false
 
 # --- Quality Control Thresholds ---
+# Site-level thresholds can be set to null to disable them (e.g. for non-GATK callers).
 qc_thresholds:
+  # Site-level variant QC filters (used by tag_variant_qc.py)
   qual: 30.0
   qd: 2.0
   mq: 40.0
   fs: 60.0
   readpos: -8.0
   hwe: 1e-6
-  min_dp: 10
-  min_gq: 20
-  ab_ratio: 0.2
   max_missing: 0.1
+  # Genotype-level masking thresholds (used by bcftools +setGT in mask_genotypes)
+  min_dp: 10 # Format DP (FMT/DP)
+  min_gq: 20 # Format GQ (FMT/GQ)
+  ab_ratio: 0.2 # Heterozygous allele balance bounds [ab_ratio, 1 - ab_ratio]
