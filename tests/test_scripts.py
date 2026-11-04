@@ -17,7 +17,10 @@ from scripts.generate_sex_map import generate_sex_map  # noqa: E402
 from scripts.preprocess_vcf_for_pypgx import (  # noqa: E402
     preprocess_vcf_for_pypgx,
 )
-from scripts.tag_variant_qc import _extract_scalar  # noqa: E402
+from scripts.tag_variant_qc import (  # noqa: E402
+    _extract_scalar,
+    tag_variant_qc,
+)
 
 
 class TestMetadataParsing(unittest.TestCase):
@@ -132,6 +135,99 @@ class TestTagVariantQcHelpers(unittest.TestCase):
         finally:
             if os.path.exists(bcf_path):
                 os.remove(bcf_path)
+
+    def test_chry_male_missingness_and_no_site_dp_or_ac_fail(self):
+        """Verify chrY uses F_MISSING_M, INFO/DP is ignored, and AC=0 remains PASS."""
+        from cyvcf2 import VCF
+
+        vcf_content = (
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10000>\n"
+            "##contig=<ID=chrY,length=10000>\n"
+            '##INFO=<ID=AC,Number=A,Type=Integer,Description="Allele count">\n'
+            '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">\n'
+            '##INFO=<ID=F_MISSING,Number=1,Type=Float,Description="Missing">\n'
+            '##INFO=<ID=F_MISSING_M,Number=1,Type=Float,Description="Male missing">\n'
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            "chrY\t100\t.\tA\tG\t50\t.\tAC=1;F_MISSING=0.65;F_MISSING_M=0.0\n"
+            "chrY\t200\t.\tA\tG\t50\t.\tAC=1;F_MISSING=0.65;F_MISSING_M=0.25\n"
+            "chr1\t300\t.\tA\tG\t50\t.\tAC=0;DP=2;F_MISSING=0.05\n"
+        )
+        thresholds = {
+            "qual": 30.0,
+            "qd": 2.0,
+            "mq": 40.0,
+            "fs": 60.0,
+            "readpos": -8.0,
+            "hwe": 1e-6,
+            "max_missing": 0.1,
+        }
+        with (
+            tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_in,
+            tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_out,
+        ):
+            f_in.write(vcf_content)
+            f_in_path = f_in.name
+            f_out_path = f_out.name
+
+        try:
+            tag_variant_qc(f_in_path, f_out_path, thresholds)
+            vcf_obj = VCF(f_out_path)
+            statuses = {rec.POS: rec.INFO.get("QC_STATUS") for rec in vcf_obj}
+            vcf_obj.close()
+            self.assertEqual(
+                statuses,
+                {
+                    100: "PASS",
+                    200: "FAIL_MISSING",
+                    300: "PASS",
+                },
+            )
+        finally:
+            os.remove(f_in_path)
+            os.remove(f_out_path)
+
+    def test_nullable_thresholds(self):
+        """Verify setting thresholds to None disables those QC checks."""
+        from cyvcf2 import VCF
+
+        vcf_content = (
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10000>\n"
+            '##INFO=<ID=QD,Number=1,Type=Float,Description="QD">\n'
+            '##INFO=<ID=MQ,Number=1,Type=Float,Description="MQ">\n'
+            '##INFO=<ID=FS,Number=1,Type=Float,Description="FS">\n'
+            '##INFO=<ID=ReadPosRankSum,Number=1,Type=Float,Description="ReadPos">\n'
+            '##INFO=<ID=F_MISSING,Number=1,Type=Float,Description="Missing">\n'
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            "chr1\t100\t.\tA\tG\t10\t.\tQD=0.5;MQ=20.0;FS=100.0;ReadPosRankSum=-12.0;F_MISSING=0.05\n"
+        )
+        thresholds = {
+            "qual": None,
+            "qd": None,
+            "mq": None,
+            "fs": None,
+            "readpos": None,
+            "hwe": 1e-6,
+            "max_missing": 0.1,
+        }
+        with (
+            tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_in,
+            tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_out,
+        ):
+            f_in.write(vcf_content)
+            f_in_path = f_in.name
+            f_out_path = f_out.name
+
+        try:
+            tag_variant_qc(f_in_path, f_out_path, thresholds)
+            vcf_obj = VCF(f_out_path)
+            rec = next(vcf_obj)
+            self.assertEqual(rec.INFO.get("QC_STATUS"), "PASS")
+            vcf_obj.close()
+        finally:
+            os.remove(f_in_path)
+            os.remove(f_out_path)
 
 
 class TestPreprocessVcf(unittest.TestCase):
