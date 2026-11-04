@@ -25,9 +25,7 @@ The pipeline can be run as Docker container, or directly from the code in the Gi
 ```bash
 conda env create -f env.yml 
 conda activate pgx_pilot
-bash scripts/install_bcftools.sh
 ```
-*(Note: `scripts/install_bcftools.sh` installs `bcftools` with native `--check-ref C` support to ensure emitted alleles are uppercase for Beacon v2 compatibility. Docker and Apptainer builds include this automatically.)*
 
 #### Using docker
 ```bash
