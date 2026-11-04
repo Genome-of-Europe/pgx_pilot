@@ -84,6 +84,7 @@ def modify_vcf_header(vcf: VCF) -> None:
         "HWE": ("A", "Float", "HWE p-value"),
         "MAF": ("1", "Float", "Minor Allele Frequency"),
         "F_MISSING": ("1", "Float", "Fraction of missing genotypes"),
+        "F_MISSING_M": ("1", "Float", "Fraction of missing genotypes in males"),
     }.items():
         if tag not in vcf:
             vcf.add_info_to_header(
@@ -163,7 +164,10 @@ def _tag_variant_records(
                 reasons.append("FAIL_HWE")
 
         if max_missing_thresh is not None:
-            f_missing = _extract_scalar(info.get("F_MISSING"))
+            if record.CHROM in ("chrY", "Y") and info.get("F_MISSING_M") is not None:
+                f_missing = _extract_scalar(info.get("F_MISSING_M"))
+            else:
+                f_missing = _extract_scalar(info.get("F_MISSING"))
             if f_missing is not None and f_missing > max_missing_thresh:
                 reasons.append("FAIL_MISSING")
 
