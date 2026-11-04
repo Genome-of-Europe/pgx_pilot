@@ -14,18 +14,10 @@ if not INPUT_VCF:
     raise WorkflowError("Configuration error: 'input_vcf' is not specified in config.yaml.")
 
 QC = config.get("qc_thresholds", {})
-QC_TAG_PARAMS = {
-    "qual": QC["qual"],
-    "qd": QC["qd"],
-    "mq": QC["mq"],
-    "fs": QC["fs"],
-    "readpos": QC["readpos"],
-    "hwe": QC["hwe"],
-    "max_missing": QC["max_missing"],
-    "min_dp": QC["min_dp"],
-    "min_gq": QC["min_gq"],
-    "ab_ratio": QC["ab_ratio"],
-}
+SITE_QC_KEYS = ("qual", "qd", "mq", "fs", "readpos", "hwe", "max_missing")
+QC_TAG_ARGS = " ".join(
+    f"--{k} {QC[k]}" for k in SITE_QC_KEYS if QC.get(k) is not None
+)
 
 REGIONS = config.get("regions", "")
 F_REGIONS = "" if not REGIONS else f"-r {REGIONS}"
@@ -241,19 +233,10 @@ rule variant_qc_tagging:
         vcf=full_sample_data_path
     log: expand(log_path("{prefix}_07_variant_qc_tagging"), prefix=PREFIX)
     params:
-        **QC_TAG_PARAMS
+        qc_args=QC_TAG_ARGS
     shell: add_log("""
         python {SCRIPTS_DIR}/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou \
-            --qual {params.qual} \
-            --qd {params.qd} \
-            --mq {params.mq} \
-            --fs {params.fs} \
-            --readpos {params.readpos} \
-            --hwe {params.hwe} \
-            --max_missing {params.max_missing} \
-            --min_dp {params.min_dp} \
-            --min_gq {params.min_gq} \
-            --ab_ratio {params.ab_ratio} |
+            {params.qc_args} |
         bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index
     """)
 
