@@ -208,14 +208,23 @@ rule generate_sex_map:
 rule fix_ploidy:
     input:
         vcf=tmp_vcf("04_masked"),
-        samples=config["sample_info"],
         ploidy=resource("ploidy_rules.txt"),
         sex_map=tmp("sex_map.txt")
     output:
         vcf=intermediate(tmp_vcf("05_ploidy_fixed"))
     log: log_path("05_ploidy_fixed")
     shell: add_log("""
-        bcftools +fixploidy {F_READ_THREADS} {input.vcf} -Ou -- -s {input.sex_map} -p {input.ploidy} |
+        males_file=$(mktemp)
+        trap 'rm -f "$males_file"' EXIT
+        comm -12 \
+            <(awk '$2=="M" {{print $1}}' {input.sex_map} | sort -u) \
+            <(bcftools query -l {input.vcf} | sort -u) \
+            > "$males_file"
+        bcftools +setGT {F_READ_THREADS} {input.vcf} -Ou -- -t q -n . \
+            -i "GT[@$males_file]=\"het\" && ((CHROM=\"chrY\" && POS>=1 && POS<=57227415) || (CHROM=\"chrX\" && ((POS>=1 && POS<=9999) || (POS>=2781480 && POS<=155701381))))" |
+        bcftools +setGT -Ou -- -t q -n . \
+            -i 'GT="het" && CHROM="chrM" && POS>=1 && POS<=16569' |
+        bcftools +fixploidy -Ou -- -s {input.sex_map} -p {input.ploidy} |
         write_tmp_vcf {output.vcf}
     """)
 
