@@ -58,6 +58,7 @@ Repository structure:
 │   ├── <your_cohort>.vcf.gz.tbi # Tabix index file for input VCF
 │   └── samples.tsv              # Metadata (sample_id, sex, country_code)
 ├── resources/            # Folder for resources
+│   ├── ploidy_rules.txt  # Sex chromosome ploidy definitions
 │   └── target_genes.txt  # Target pharmacogenes list
 └── results/              # Output directory
 ```
@@ -78,6 +79,21 @@ The sample metadata file must be a three column TSV file, with or without header
 
 **QC Thresholds:**
 The pipeline uses standardized thresholds defined in the `qc_thresholds` section of `config.yaml`:
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `qual` | Site QC | `30.0` | Minimum variant QUAL score |
+| `qd` | Site QC | `2.0` | Minimum QualByDepth |
+| `mq` | Site QC | `40.0` | Minimum RMS Mapping Quality |
+| `fs` | Site QC | `60.0` | Maximum FisherStrand score |
+| `readpos` | Site QC | `-8.0` | Minimum ReadPosRankSum score |
+| `hwe` | Site QC | `1e-6` | Minimum Hardy-Weinberg p-value |
+| `max_missing` | Site QC | `0.1` | Maximum missingness fraction (uses male-specific missingness on chrY) |
+| `min_dp` | Genotype mask | `10` | Minimum sample read depth (`FMT/DP`) |
+| `min_gq` | Genotype mask | `20` | Minimum sample genotype quality (`FMT/GQ`) |
+| `ab_ratio` | Genotype mask | `0.2` | Minimum allele balance for heterozygous calls |
+
+*Note: Any site-level threshold can be set to `null` in `config.yaml` to disable that specific filter (e.g. for long-read callers).*
 
 ## 5. Pipeline Workflows
 
@@ -122,6 +138,7 @@ Results are written to the `results/` folder.
 
 ### Main Output Files
 *   **GoE Pipeline Outputs**
+    Each output VCF file is accompanied by a Tabix index file (`.tbi`).
     *   `results/{output_prefix}.sites.pass.vcf.gz`: **Submission File for beacon.** PASS variants only.
     *   `results/{output_prefix}.sites.all.vcf.gz`: **For GoE PGx pilot (Internal).** All variants including those that failed QC.
     *   `results/{output_prefix}.full_sample_data.vcf.gz`: **The full VCF with all sample genotypes.** All variants including those that failed QC.
@@ -130,6 +147,9 @@ Results are written to the `results/` folder.
     *   `results/pgx/merged_alleles.csv`: Aggregated star-allele calls across genes, stratified by Group.
     *   `results/pgx/merged_phenotypes.csv`: Aggregated phenotype predictions, stratified by Group.
     *   `results/pgx/merged_genotypes.csv`: Aggregated genotype calls and frequencies, stratified by Group.
+    *   `results/pgx/merged_sample_alleles.csv`: Individual sample star-allele calls across genes.
+    *   `results/pgx/merged_sample_phenotypes.csv`: Individual sample phenotype predictions across genes.
+    *   `results/pgx/merged_sample_genotypes.csv`: Individual sample genotype calls across genes.
 
 ### Calculated Statistics
 Statistics (AC, AN, AF, etc.) are stratified by Country and Sex based on the input metadata.

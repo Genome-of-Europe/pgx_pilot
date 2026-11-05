@@ -33,6 +33,7 @@ TMP_O = config.get("tmp_vcf_O", "b1")
 TMP_EXT = vcf_format_from_output_type(TMP_O)
 OUT_O = config.get("out_vcf_O", "z4")
 OUT_EXT = vcf_format_from_output_type(OUT_O)
+F_WRITE_INDEX = "--write-index=tbi" if OUT_EXT == "vcf.gz" else "--write-index"
 
 # --- Intermediate Output Handling ---
 KEEP_INTERMEDIATE = config.get("keep_intermediate", False)
@@ -246,7 +247,7 @@ rule variant_qc_tagging:
     shell: add_log("""
         python {SCRIPTS_DIR}/tag_variant_qc.py --in-threads {READ_THREADS} {input} -Ou \
             {params.qc_args} |
-        bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} --write-index
+        bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.vcf} {F_WRITE_INDEX}
     """)
 
 rule create_sites_vcf:
@@ -258,8 +259,9 @@ rule create_sites_vcf:
     log: expand(log_path("{prefix}_08_sites"), prefix=PREFIX)
     shell: add_log("""
         bcftools view {F_READ_THREADS} {input.in_vcf} -G -Ou |
-        tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.all_sites} --write-index) |
-        bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.pass_sites} -i 'INFO/QC_STATUS="PASS"' --write-index
+        tee >(bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.all_sites} {F_WRITE_INDEX}) |
+        bcftools view {F_WRITE_THREADS} -O{OUT_O} -o {output.pass_sites} -i 'INFO/QC_STATUS="PASS"' {F_WRITE_INDEX}
+        wait
     """)
 
 onsuccess:
