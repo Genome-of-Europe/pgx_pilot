@@ -80,20 +80,29 @@ The sample metadata file must be a three column TSV file, with or without header
 **QC Thresholds:**
 The pipeline uses standardized thresholds defined in the `qc_thresholds` section of `config.yaml`:
 
-| Parameter | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `qual` | Site QC | `30.0` | Minimum variant QUAL score |
-| `qd` | Site QC | `2.0` | Minimum QualByDepth |
-| `mq` | Site QC | `40.0` | Minimum RMS Mapping Quality |
-| `fs` | Site QC | `60.0` | Maximum FisherStrand score |
-| `readpos` | Site QC | `-8.0` | Minimum ReadPosRankSum score |
-| `hwe` | Site QC | `1e-6` | Minimum Hardy-Weinberg p-value |
-| `max_missing` | Site QC | `0.1` | Maximum missingness fraction (uses male-specific missingness on chrY) |
-| `min_dp` | Genotype mask | `10` | Minimum sample read depth (`FMT/DP`) |
-| `min_gq` | Genotype mask | `20` | Minimum sample genotype quality (`FMT/GQ`) |
-| `ab_ratio` | Genotype mask | `0.2` | Minimum allele balance for heterozygous calls |
+#### Sample-Level Genotype Masking
+Applied to individual sample genotypes prior to recalculating cohort allele frequencies:
 
-*Note: Any site-level threshold can be set to `null` in `config.yaml` to disable that specific filter (e.g. for long-read callers).*
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `min_dp` | `10` | Minimum sample read depth (`FMT/DP`) |
+| `min_gq` | `20` | Minimum sample genotype quality (`FMT/GQ`) |
+| `ab_ratio` | `0.2` | Minimum allele balance for heterozygous calls |
+
+#### Variant-Level Quality Control
+Applied to population-level site records:
+
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `max_missing` | `0.1` | Maximum missingness fraction (uses male-specific missingness on chrY) |
+| `qual` | `None` | Minimum variant QUAL score (disabled by default) |
+| `qd` | `None` | Minimum QualByDepth (disabled by default) |
+| `mq` | `None` | Minimum RMS Mapping Quality (disabled by default) |
+| `fs` | `None` | Maximum FisherStrand score (disabled by default) |
+| `readpos` | `None` | Minimum ReadPosRankSum score (disabled by default) |
+| `hwe` | `None` | Minimum Hardy-Weinberg p-value (disabled by default) |
+
+*Note: By default, minimal variant-level filtering is applied (`max_missing: 0.1`). Caller-specific filters (such as GATK hard filters `qual: 30.0`, `qd: 2.0`, `mq: 40.0`, `fs: 60.0`, `readpos: -8.0`, or `hwe: 1e-6`) can be enabled by specifying numeric thresholds in `config.yaml`.*
 
 ## 5. Pipeline Workflows
 

@@ -22,12 +22,18 @@ keep_intermediate: false
 # Site-level thresholds can be set to null to disable them (e.g. for non-GATK callers).
 qc_thresholds:
   # Site-level variant QC filters (used by tag_variant_qc.py)
-  qual: 30.0
-  qd: 2.0
-  mq: 40.0
-  fs: 60.0
-  readpos: -8.0
-  hwe: 1e-6
+  #qual: 30.0
+  #qd: 2.0
+  #mq: 40.0
+  #fs: 60.0
+  #readpos: -8.0
+  #hwe: 1e-6
+  qual: None
+  qd: None
+  mq: None
+  fs: None
+  readpos: None
+  hwe: None      
   max_missing: 0.1
   # Genotype-level masking thresholds (used by bcftools +setGT in mask_genotypes)
   min_dp: 10 # Format DP (FMT/DP)
