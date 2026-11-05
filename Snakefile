@@ -221,7 +221,7 @@ rule fix_ploidy:
             <(bcftools query -l {input.vcf} | sort -u) \
             > "$males_file"
         bcftools +setGT {F_READ_THREADS} {input.vcf} -Ou -- -t q -n . \
-            -i "GT[@$males_file]=\"het\" && ((CHROM=\"chrY\" && POS>=1 && POS<=57227415) || (CHROM=\"chrX\" && ((POS>=1 && POS<=9999) || (POS>=2781480 && POS<=155701381))))" |
+            -i 'GT[@'"$males_file"']="het" && ((CHROM="chrY" && POS>=1 && POS<=57227415) || (CHROM="chrX" && ((POS>=1 && POS<=9999) || (POS>=2781480 && POS<=155701381))))' |
         bcftools +setGT -Ou -- -t q -n . \
             -i 'GT="het" && CHROM="chrM" && POS>=1 && POS<=16569' |
         bcftools +fixploidy -Ou -- -s {input.sex_map} -p {input.ploidy} |
