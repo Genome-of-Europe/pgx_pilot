@@ -260,6 +260,63 @@ class TestPreprocessVcf(unittest.TestCase):
             if os.path.exists(f_out_path):
                 os.remove(f_out_path)
 
+    def test_bcftools_norm_and_preprocess_pipeline(self):
+        """Verify bcftools normalization pipe + preprocess_vcf_for_pypgx."""
+        import shutil
+        import subprocess
+
+        from cyvcf2 import VCF
+
+        if shutil.which("bcftools") is None:
+            self.skipTest("bcftools not available on PATH")
+
+        vcf_content = (
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr2,length=250000000>\n"
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">\n'
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4\n"
+            "chr2\t233760233\t.\tcat\tc,catat,*\t.\t.\t.\tGT:AD\t"
+            "0/1:10,12,0,0\t0/2:11,0,13,0\t.:.,.,.,.\t./1:5,6,0,0\n"
+        )
+        with (
+            tempfile.NamedTemporaryFile("w", suffix=".vcf", delete=False) as f_in,
+            tempfile.NamedTemporaryFile("w", suffix=".vcf.gz", delete=False) as f_norm,
+            tempfile.NamedTemporaryFile("w", suffix=".vcf.gz", delete=False) as f_out,
+        ):
+            f_in.write(vcf_content)
+            in_path = f_in.name
+            norm_path = f_norm.name
+            out_path = f_out.name
+
+        try:
+            cmd = (
+                f"bcftools norm --force -m -any -a --check-ref C -Ou {in_path} | "
+                "bcftools view -e 'ALT=\"*\"' -Ou | "
+                "bcftools norm --rm-dup exact -Ou | "
+                f"bcftools +setGT -O z -o {norm_path} -- -t . -n c:'./.'"
+            )
+            subprocess.run(cmd, shell=True, check=True, capture_output=True)
+            preprocess_vcf_for_pypgx(norm_path, out_path)
+
+            vcf_out = VCF(out_path)
+            records = list(vcf_out)
+            vcf_out.close()
+
+            self.assertEqual(len(records), 2)
+            # First split record: CAT -> C
+            self.assertEqual((records[0].REF, records[0].ALT), ("CAT", ["C"]))
+            # Second split record: right-trimmed from CAT -> CATAT to C -> CAT
+            self.assertEqual((records[1].REF, records[1].ALT), ("C", ["CAT"]))
+            # S3 ('.') and S4 ('./1') normalized to diploid missing [-1, -1, False]
+            for rec in records:
+                self.assertEqual(rec.genotypes[2], [-1, -1, False])
+                self.assertEqual(rec.genotypes[3], [-1, -1, False])
+        finally:
+            for path in (in_path, norm_path, out_path):
+                if os.path.exists(path):
+                    os.remove(path)
+
 
 if __name__ == "__main__":
     unittest.main()

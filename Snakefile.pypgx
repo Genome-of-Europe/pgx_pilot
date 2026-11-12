@@ -81,7 +81,13 @@ rule extract_target_genes:
         vcf=temp("results/temp/target_genes_raw.vcf.gz")
     threads: 2
     shell:
-        "bcftools view --threads {threads} -R {input.bed} -O z -o {output.vcf} {input.vcf}"
+        """
+        bcftools view --threads {threads} -R {input.bed} -Ou {input.vcf} |
+        bcftools norm --threads {threads} --force -m -any -a --check-ref C -Ou |
+        bcftools view --threads {threads} -e 'ALT="*"' -Ou |
+        bcftools norm --threads {threads} --rm-dup exact -Ou |
+        bcftools +setGT --threads {threads} -O z -o {output.vcf} -- -t . -n c:'./.'
+        """
 
 rule format_vcf_for_pypgx:
     input:
